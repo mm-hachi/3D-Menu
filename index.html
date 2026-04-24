@@ -98,25 +98,41 @@
     const overlay = document.getElementById('viewer-overlay');
     const viewer = document.getElementById('main-viewer');
     const loader = document.getElementById('loading-ui');
-    const proxy = "https://drive-proxy.yourname.workers.dev/?id=";
-
+    
+    // REPLACE this with your actual Cloudflare Worker URL
+    const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
+    
     function openViewer(glbID, usdzID, title) {
+        // 1. Show the fullscreen overlay and the spinner
         overlay.style.display = 'block';
         loader.style.display = 'block';
         
-        // Update viewer sources using your Cloudflare Proxy
-        viewer.src = "https://drive-proxy.mukudzeimorton.workers.dev/?id=1Zq08wMYhvIPcwHl2Ln43Hw5JysteHzyl";
-        viewer.iosSrc = "https://drive-proxy.mukudzeimorton.workers.dev/?id=1BBBr0R4gl83qguZqsqp2F3iwX18Syiqc";
-
-        // Hide loader once the model is ready
+        // 2. Update the Page Title (Optional: if you add a title element)
+        console.log("Loading model: " + title);
+    
+        // 3. Inject the Proxy links into the viewer attributes
+        // We use setAttribute to ensure the browser registers the change immediately
+        viewer.setAttribute('src', proxyBase + "1Zq08wMYhvIPcwHl2Ln43Hw5JysteHzyl");
+        viewer.setAttribute('ios-src', proxyBase + "1BBBr0R4gl83qguZqsqp2F3iwX18Syiqc");
+    
+        // 4. Listen for the 'load' event to hide the spinner
         viewer.addEventListener('load', () => {
             loader.style.display = 'none';
-        });
+        }, { once: true }); // {once: true} prevents memory leaks
+    
+        // 5. Error handling (e.g. if the proxy is down)
+        viewer.addEventListener('error', (err) => {
+            console.error("3D model failed to fetch:", err);
+            alert("The model is taking a while. Please check your connection.");
+        }, { once: true });
     }
-
+    
     function closeViewer() {
         overlay.style.display = 'none';
-        viewer.src = ""; // Stop loading/playing when closed
+        
+        // Crucial: Clear the sources so the phone stops downloading data in the background
+        viewer.setAttribute('src', '');
+        viewer.setAttribute('ios-src', '');
     }
 </script>
 
