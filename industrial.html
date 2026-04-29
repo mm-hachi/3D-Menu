@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shot 47 XLVII | Portfolio Category</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
+        #viewer-overlay { display: none; }
+        #viewer-overlay.active { display: block; }
+        .admin-controls { display: none; }
+        body.admin-mode .admin-controls { display: inline-flex; }
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #000; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="antialiased pb-20">
+
+    <nav class="fixed w-full z-40 top-0 bg-white/80 backdrop-blur-md border-b border-slate-200">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+            <a href="index.html" class="font-bold tracking-tight text-xl text-slate-900 hover:text-blue-600 transition">← SHOT 47 XLVII</a>
+            <span class="text-sm font-semibold text-slate-500 cursor-pointer" ondblclick="toggleAdmin()">Category Portfolio</span>
+        </div>
+    </nav>
+
+    <section class="pt-32 pb-10 px-6 max-w-4xl mx-auto">
+        <h1 class="text-4xl font-bold text-slate-900 mb-2" id="page-title">Culinary AR Menus</h1>
+        <p class="text-slate-600 mb-8">Select an item to view in high-fidelity 3D.</p>
+        
+        <button onclick="addNewCard()" class="admin-controls mb-6 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-bold shadow-sm hover:bg-blue-700">
+            + Add New Scan
+        </button>
+        
+        <div id="model-grid" class="flex flex-col gap-4">
+            </div>
+    </section>
+
+    <div id="viewer-overlay" class="fixed inset-0 bg-white z-50">
+        <button onclick="closeViewer()" class="absolute top-6 right-6 z-50 bg-slate-900 text-white px-5 py-2 rounded-full font-semibold shadow-lg">Close</button>
+        <div id="loading-ui" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center z-40">
+            <div class="loader mb-4"></div><p class="text-slate-600 font-medium tracking-wide">Loading Assets...</p>
+        </div>
+        <model-viewer id="main-viewer" ar ar-modes="webxr scene-viewer quick-look" camera-controls shadow-intensity="1" auto-rotate>
+            <button slot="ar-button" class="absolute bottom-10 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-full font-bold shadow-xl">View in AR Space</button>
+        </model-viewer>
+    </div>
+
+    <script>
+        // 1. Setup Data & LocalStorage
+        const pageID = "shot47_hospitality_data"; // CHANGE THIS ID FOR EACH SEPARATE HTML PAGE
+        const proxyBase = "https://drive-proxy.yourname.workers.dev/?id=";
+        const ADMIN_PASSWORD = "admin"; // Set your password here
+
+        // 5 Initial Placeholders
+        const defaultData = [
+            { id: Date.now()+1, title: "Artisan Burger", desc: "4K Texture mapping with subsurface scattering.", glb: "placeholder", usdz: "placeholder", img: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80" },
+            { id: Date.now()+2, title: "Craft Cocktail", desc: "Refraction and liquid physics simulation.", glb: "placeholder", usdz: "placeholder", img: "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&q=80" },
+            { id: Date.now()+3, title: "Seared Steak", desc: "High-density mesh geometry.", glb: "placeholder", usdz: "placeholder", img: "https://images.unsplash.com/photo-1600891964092-4316c288032e?w=400&q=80" },
+            { id: Date.now()+4, title: "Pasta Dish", desc: "Optimized for mobile AR loading.", glb: "placeholder", usdz: "placeholder", img: "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=400&q=80" },
+            { id: Date.now()+5, title: "Desert Platter", desc: "Multi-object photogrammetry scan.", glb: "placeholder", usdz: "placeholder", img: "https://images.unsplash.com/photo-1551024601-bec78aea704b?w=400&q=80" }
+        ];
+
+        // Load data from storage, or use defaults
+        let modelsData = JSON.parse(localStorage.getItem(pageID)) || defaultData;
+
+        // 2. Render the Grid
+        function renderGrid() {
+            const grid = document.getElementById('model-grid');
+            grid.innerHTML = ''; // Clear current
+            
+            modelsData.forEach((model, index) => {
+                const cardHTML = `
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition">
+                    <div class="flex items-center gap-4 cursor-pointer flex-1" onclick="openViewer('${model.glb}', '${model.usdz}')">
+                        <img src="${model.img}" class="w-16 h-16 rounded-lg object-cover bg-slate-100">
+                        <div>
+                            <h3 class="font-bold text-slate-900">${model.title}</h3>
+                            <p class="text-xs text-slate-500">${model.desc}</p>
+                        </div>
+                    </div>
+                    <button onclick="deleteCard(${index})" class="admin-controls ml-4 text-red-500 hover:text-red-700 p-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>`;
+                grid.insertAdjacentHTML('beforeend', cardHTML);
+            });
+            localStorage.setItem(pageID, JSON.stringify(modelsData)); // Save state
+        }
+
+        // 3. Admin Security Logic (Local only)
+        function toggleAdmin() {
+            if(document.body.classList.contains('admin-mode')) {
+                document.body.classList.remove('admin-mode');
+                alert("Logged out of edit mode.");
+                return;
+            }
+            const pass = prompt("Enter Admin Password to edit this page:");
+            if (pass === ADMIN_PASSWORD) {
+                document.body.classList.add('admin-mode');
+            } else if (pass !== null) {
+                alert("Incorrect Password.");
+            }
+        }
+
+        // 4. Edit Functions
+        function addNewCard() {
+            const title = prompt("Enter Scan Title:");
+            if(!title) return;
+            const desc = prompt("Enter brief description:");
+            const glb = prompt("Enter Google Drive GLB ID:");
+            const usdz = prompt("Enter Google Drive USDZ ID:");
+            
+            modelsData.unshift({
+                id: Date.now(),
+                title: title, desc: desc, glb: glb, usdz: usdz,
+                img: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80" // Default generic image
+            });
+            renderGrid();
+        }
+
+        function deleteCard(index) {
+            if(confirm("Are you sure you want to remove this scan from the menu?")) {
+                modelsData.splice(index, 1);
+                renderGrid();
+            }
+        }
+
+        // 5. 3D Viewer Logic
+        function openViewer(glbID, usdzID) {
+            if(glbID === "placeholder") {
+                alert("This is a placeholder card. In admin mode, add a real card with valid Google Drive IDs to view.");
+                return;
+            }
+            const viewer = document.getElementById('main-viewer');
+            const overlay = document.getElementById('viewer-overlay');
+            const loader = document.getElementById('loading-ui');
+            
+            overlay.classList.add('active');
+            loader.style.display = 'block';
+            viewer.setAttribute('src', proxyBase + glbID);
+            viewer.setAttribute('ios-src', proxyBase + usdzID);
+
+            viewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
+        }
+
+        function closeViewer() {
+            document.getElementById('viewer-overlay').classList.remove('active');
+            setTimeout(() => {
+                const viewer = document.getElementById('main-viewer');
+                viewer.setAttribute('src', '');
+                viewer.setAttribute('ios-src', '');
+            }, 300);
+        }
+
+        // Initialize Page
+        renderGrid();
+    </script>
+</body>
+</html>
