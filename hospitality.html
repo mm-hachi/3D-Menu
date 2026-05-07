@@ -1,138 +1,139 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shot 47 XLVII | Portfolio Category</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
-        
-        /* Updated Overlay Styles */
-        #viewer-overlay { display: none; opacity: 0; transition: opacity 0.3s ease; }
-        #viewer-overlay.active { display: flex; opacity: 1; }
-        
-        .admin-controls { display: none; }
-        body.admin-mode .admin-controls { display: inline-flex; }
-        
-        .loader { border: 3px solid #e2e8f0; border-top: 3px solid #0284c7; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
-</head>
-<body class="antialiased pb-20">
-
-    <nav class="fixed w-full z-40 top-0 bg-white/80 backdrop-blur-md border-b border-slate-200">
-        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-            <a href="index.html" class="font-bold tracking-tight text-xl text-slate-900 hover:text-blue-600 transition">← SHOT 47 XLVII</a>
-            <span class="text-sm font-semibold text-slate-500 cursor-pointer" ondblclick="toggleAdmin()">Category Portfolio</span>
-        </div>
-    </nav>
-
-    <section class="pt-32 pb-10 px-6 max-w-4xl mx-auto">
-        <h1 class="text-4xl font-bold text-slate-900 mb-2" id="page-title">Culinary AR Menus</h1>
-        <p class="text-slate-600 mb-8">Select an item to view in high-fidelity 3D.</p>
-        
-        <button onclick="addNewCard()" class="admin-controls mb-6 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-bold shadow-sm hover:bg-blue-700">
-            + Add New Scan
-        </button>
-        
-        <div id="model-grid" class="flex flex-col gap-4">
-            </div>
-    </section>
-
-    <div id="viewer-overlay" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 items-center justify-center p-4 md:p-8">
-        
-        <div class="bg-white rounded-2xl overflow-hidden shadow-2xl max-w-6xl w-full flex flex-col md:flex-row relative">
-            
-            <button onclick="closeViewer()" class="absolute top-4 right-4 md:top-6 md:right-6 z-50 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 w-10 h-10 rounded-full flex items-center justify-center font-bold transition">
-                ✕
-            </button>
-            
-            <div class="w-full md:w-2/3 h-[50vh] md:h-[75vh] bg-slate-100 relative border-b md:border-b-0 md:border-r border-slate-200">
-                
-                <div id="loading-ui" class="absolute inset-0 flex flex-col items-center justify-center z-40 bg-slate-100">
-                    <div class="loader mb-4"></div>
-                    <p class="text-slate-500 font-medium tracking-wide">Optimizing Asset...</p>
-                </div>
-
-                <model-viewer id="main-viewer" class="w-full h-full"
-                    ar ar-modes="webxr scene-viewer quick-look" 
-                    camera-controls 
-                    max-camera-orbit="auto 90deg auto"
-                    min-camera-orbit="auto 0deg auto"
-                    shadow-intensity="1" auto-rotate>
-                    
-                    <button slot="ar-button" class="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl hover:bg-blue-700 transition">
-                        View in AR Space
-                    </button>
-                </model-viewer>
-            </div>
-
-            <div class="w-full md:w-1/3 p-8 flex flex-col justify-center bg-white">
-                <div class="text-xs font-bold text-blue-600 mb-2 uppercase tracking-wider">Digital Twin</div>
-                <h2 id="sidebar-title" class="text-3xl font-bold text-slate-900 mb-4">Model Title</h2>
-                <p id="sidebar-desc" class="text-slate-600 leading-relaxed mb-8">Model Description</p>
-                
-                <div class="mt-auto p-5 bg-slate-50 rounded-xl border border-slate-100">
-                    <p class="text-xs text-slate-500 font-bold mb-2 uppercase tracking-wider">Interaction Guide</p>
-                    <ul class="text-sm text-slate-600 space-y-1">
-                        <li>• <b>Desktop:</b> Click and drag to rotate. Scroll to zoom.</li>
-                        <li>• <b>Mobile:</b> Swipe to rotate. Pinch to zoom.</li>
-                        <li>• <b>AR:</b> Tap the blue button on a compatible smartphone.</li>
-                    </ul>
-                </div>
-            </div>
-
-        </div>
-    </div>
-
-    <!-- Put this right before the closing </body> tag -->
 <script type="module">
-    // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
-    console.log("Firebase Script Loaded Successfully!");
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
+    // 1. Import EVERYTHING needed from the Firebase CDN
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { 
+        getFirestore, 
+        collection, 
+        getDocs, 
+        addDoc, 
+        deleteDoc, 
+        doc 
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { 
+        getAuth, 
+        signInWithEmailAndPassword, 
+        onAuthStateChanged, 
+        signOut 
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-  // Your web app's Firebase configuration
-  const firebaseConfig = {
-    apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
-    authDomain: "shot47-database.firebaseapp.com",
-    projectId: "shot47-database",
-    storageBucket: "shot47-database.firebasestorage.app",
-    messagingSenderId: "77237094269",
-    appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
-  };
+    // 2. Your Firebase Configuration (Ensure these are your actual keys)
+    const firebaseConfig = {
+        apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
+        authDomain: "shot47-database.firebaseapp.com",
+        projectId: "shot47-database",
+        storageBucket: "shot47-database.firebasestorage.app",
+        messagingSenderId: "77237094269",
+        appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
+    };
 
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-
+    // 3. Initialize Services
+    const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth(app);
     
-    // We categorize the database collection by page name
     const categoryName = "hospitality_models"; 
     let modelsData = [];
 
-    // --- DATABASE: Fetch & Render ---
+    // --- GLOBAL FUNCTIONS (Attached to 'window' so HTML can call them) ---
+
+    window.toggleAdmin = async function() {
+        if(document.body.classList.contains('admin-mode')) {
+            await signOut(auth);
+            alert("Logged out.");
+            return;
+        }
+        const email = prompt("Admin Email:");
+        const pass = prompt("Admin Password:");
+        try {
+            await signInWithEmailAndPassword(auth, email, pass);
+        } catch (error) {
+            alert("Login Failed: " + error.message);
+        }
+    };
+
+    window.addNewCard = async function() {
+        const title = prompt("Enter Scan Title:");
+        if(!title) return;
+        const desc = prompt("Description:");
+        const glb = prompt("GLB ID:");
+        const usdz = prompt("USDZ ID:");
+        
+        try {
+            await addDoc(collection(db, categoryName), {
+                title, desc, glb, usdz,
+                img: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80",
+                createdAt: new Date()
+            });
+            loadFromDatabase();
+        } catch (e) {
+            alert("Error: " + e.message);
+        }
+    };
+
+    window.deleteCard = async function(db_id) {
+        if(confirm("Delete this scan?")) {
+            try {
+                await deleteDoc(doc(db, categoryName, db_id));
+                loadFromDatabase();
+            } catch (e) {
+                alert("Error: " + e.message);
+            }
+        }
+    };
+
+    window.openViewer = function(index) {
+        const model = modelsData[index];
+        document.getElementById('sidebar-title').innerText = model.title;
+        document.getElementById('sidebar-desc').innerText = model.desc;
+
+        const viewer = document.getElementById('main-viewer');
+        const overlay = document.getElementById('viewer-overlay');
+        const loader = document.getElementById('loading-ui');
+        
+        overlay.classList.add('active');
+        loader.style.display = 'flex';
+        
+        // Ensure you replace this with your actual Cloudflare Worker URL
+        const proxyBase = "https://drive-proxy.yourname.workers.dev/?id=";
+        viewer.setAttribute('src', proxyBase + model.glb);
+        viewer.setAttribute('ios-src', proxyBase + model.usdz);
+        viewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
+    };
+
+    window.closeViewer = function() {
+        document.getElementById('viewer-overlay').classList.remove('active');
+        const viewer = document.getElementById('main-viewer');
+        viewer.setAttribute('src', '');
+        viewer.setAttribute('ios-src', '');
+    };
+
+    // --- INTERNAL LOGIC ---
+
     async function loadFromDatabase() {
-        modelsData = [];
-        const querySnapshot = await getDocs(collection(db, categoryName));
-        querySnapshot.forEach((doc) => {
-            // Push the data, plus the unique database ID for deletions
-            modelsData.push({ db_id: doc.id, ...doc.data() }); 
-        });
-        renderGrid();
+        const grid = document.getElementById('model-grid');
+        grid.innerHTML = '<p class="text-center py-10 text-slate-400">Loading catalog...</p>';
+        
+        try {
+            const querySnapshot = await getDocs(collection(db, categoryName));
+            modelsData = [];
+            querySnapshot.forEach((doc) => {
+                modelsData.push({ db_id: doc.id, ...doc.data() });
+            });
+            renderGrid();
+        } catch (e) {
+            grid.innerHTML = '<p class="text-red-500">Error loading database. Check console.</p>';
+            console.error(e);
+        }
     }
 
     function renderGrid() {
         const grid = document.getElementById('model-grid');
-        grid.innerHTML = ''; 
-        
+        grid.innerHTML = '';
+        if (modelsData.length === 0) {
+            grid.innerHTML = '<p class="text-center py-10 text-slate-400">No scans found. Log in to add one.</p>';
+            return;
+        }
         modelsData.forEach((model, index) => {
-            // Notice deleteCard now uses model.db_id instead of just an index
             const cardHTML = `
             <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition">
                 <div class="flex items-center gap-4 cursor-pointer flex-1" onclick="openViewer(${index})">
@@ -150,102 +151,11 @@
         });
     }
 
-    // --- SECURITY: Admin Login ---
-    window.toggleAdmin = async function() {
-        if(document.body.classList.contains('admin-mode')) {
-            await signOut(auth); // Securely log out
-            alert("Logged out securely.");
-            return;
-        }
-        
-        const email = prompt("Admin Email:");
-        const pass = prompt("Admin Password:");
-        
-        try {
-            await signInWithEmailAndPassword(auth, email, pass);
-            alert("Login Successful. Admin rights granted.");
-        } catch (error) {
-            alert("Login Failed: " + error.message);
-        }
-    }
-
-    // Listen for login state changes
     onAuthStateChanged(auth, (user) => {
-        if (user) {
-            document.body.classList.add('admin-mode');
-        } else {
-            document.body.classList.remove('admin-mode');
-        }
+        if (user) document.body.classList.add('admin-mode');
+        else document.body.classList.remove('admin-mode');
     });
 
-    // --- DATABASE: Write & Delete ---
-    window.addNewCard = async function() {
-        const title = prompt("Enter Scan Title:");
-        if(!title) return;
-        const desc = prompt("Enter brief description:");
-        const glb = prompt("Enter Google Drive GLB ID:");
-        const usdz = prompt("Enter Google Drive USDZ ID:");
-        
-        const newModel = {
-            title: title, 
-            desc: desc, 
-            glb: glb, 
-            usdz: usdz,
-            img: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80",
-            createdAt: new Date()
-        };
-
-        try {
-            // Push to Google's cloud database
-            await addDoc(collection(db, categoryName), newModel);
-            loadFromDatabase(); // Refresh the grid
-        } catch (e) {
-            alert("Error adding document. Are you logged in? " + e);
-        }
-    }
-
-    window.deleteCard = async function(db_id) {
-        if(confirm("Permanently delete this scan from the global database?")) {
-            try {
-                await deleteDoc(doc(db, categoryName, db_id));
-                loadFromDatabase(); // Refresh the grid
-            } catch (e) {
-                alert("Error deleting: " + e);
-            }
-        }
-    }
-
-    // --- 3D VIEWER LOGIC (Remains largely the same) ---
-    const proxyBase = "https://drive-proxy.yourname.workers.dev/?id=";
-    
-    window.openViewer = function(index) {
-        const model = modelsData[index];
-        document.getElementById('sidebar-title').innerText = model.title;
-        document.getElementById('sidebar-desc').innerText = model.desc;
-
-        const viewer = document.getElementById('main-viewer');
-        const overlay = document.getElementById('viewer-overlay');
-        const loader = document.getElementById('loading-ui');
-        
-        overlay.classList.add('active');
-        loader.style.display = 'flex';
-        
-        viewer.setAttribute('src', proxyBase + model.glb);
-        viewer.setAttribute('ios-src', proxyBase + model.usdz);
-        viewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
-    }
-
-    window.closeViewer = function() {
-        document.getElementById('viewer-overlay').classList.remove('active');
-        setTimeout(() => {
-            const viewer = document.getElementById('main-viewer');
-            viewer.setAttribute('src', '');
-            viewer.setAttribute('ios-src', '');
-        }, 300);
-    }
-
-    // Initialize: Fetch data from Cloud on page load
+    // Start
     loadFromDatabase();
 </script>
-</body>
-</html>
