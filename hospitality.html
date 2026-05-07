@@ -51,7 +51,8 @@
             </button>
             
             <div class="w-full md:w-2/3 h-[50vh] md:h-[75vh] bg-slate-100 relative border-b md:border-b-0 md:border-r border-slate-200">
-                
+                <div id="viewer-frame" class="w-full h-full">
+                    </div>
                 <div id="loading-ui" class="absolute inset-0 flex flex-col items-center justify-center z-40 bg-slate-100">
                     <div class="loader mb-4"></div>
                     <p class="text-slate-500 font-medium tracking-wide">Optimizing Asset...</p>
@@ -172,63 +173,60 @@
 
     window.openViewer = function(index) {
     const model = modelsData[index];
+    const viewerContainer = document.getElementById('viewer-frame'); // We will add this ID to your HTML
+    const overlay = document.getElementById('viewer-overlay');
+    const loader = document.getElementById('loading-ui');
     
-    // 1. Populate text immediately
+    // 1. Update Text
     document.getElementById('sidebar-title').innerText = model.title;
     document.getElementById('sidebar-desc').innerText = model.desc;
 
-    const viewer = document.getElementById('main-viewer');
-    const overlay = document.getElementById('viewer-overlay');
-    const loader = document.getElementById('loading-ui');
-    
-    // 2. Show the UI
+    // 2. Show UI
     overlay.classList.add('active');
     loader.style.display = 'flex';
-    
-    // 3. Clear existing attributes first to force a fresh state
-    viewer.removeAttribute('src');
-    viewer.removeAttribute('ios-src');
 
-    // 4. Set new sources
-    const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
-    const glbUrl = proxyBase + model.glb;
-    const usdzUrl = proxyBase + model.usdz;
+    // 3. THE FIX: Clear the old viewer entirely to free up GPU memory
+    viewerContainer.innerHTML = ''; 
 
-    // Use a small timeout to ensure the browser registers the attribute change
-    setTimeout(() => {
-        viewer.setAttribute('src', glbUrl);
-        viewer.setAttribute('ios-src', usdzUrl);
-    }, 50);
+    // 4. Create a BRAND NEW viewer element
+    const newViewer = document.createElement('model-viewer');
+    newViewer.id = 'main-viewer';
+    newViewer.className = 'w-full h-full';
+    newViewer.setAttribute('ar', '');
+    newViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+    newViewer.setAttribute('camera-controls', '');
+    newViewer.setAttribute('max-camera-orbit', 'auto 90deg auto');
+    newViewer.setAttribute('shadow-intensity', '1');
+    newViewer.setAttribute('auto-rotate', '');
 
-    // 5. Improved Load Listener
-    const handleLoad = () => {
+    // 5. Set sources
+    const proxyBase = "https://drive-proxy.yourname.workers.dev/?id=";
+    newViewer.setAttribute('src', proxyBase + model.glb);
+    newViewer.setAttribute('ios-src', proxyBase + model.usdz);
+
+    // 6. Add the AR Button inside the new viewer
+    const arButton = document.createElement('button');
+    arButton.slot = 'ar-button';
+    arButton.className = 'absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl';
+    arButton.innerText = 'View in AR Space';
+    newViewer.appendChild(arButton);
+
+    // 7. Inject the fresh viewer into the page
+    viewerContainer.appendChild(newViewer);
+
+    // 8. Handle Loading
+    newViewer.addEventListener('load', () => {
         loader.style.display = 'none';
-        viewer.removeEventListener('load', handleLoad);
-    };
-    
-    viewer.addEventListener('load', handleLoad);
+    }, { once: true });
 
-    // Fallback: If it takes longer than 10 seconds, hide loader anyway
-    setTimeout(() => {
-        if (loader.style.display === 'flex') {
-            loader.style.display = 'none';
-        }
-    }, 10000);
+    // Emergency Timeout
+    setTimeout(() => { loader.style.display = 'none'; }, 12000);
 };
 
 window.closeViewer = function() {
-    const overlay = document.getElementById('viewer-overlay');
-    const viewer = document.getElementById('main-viewer');
-    const loader = document.getElementById('loading-ui');
-
-    overlay.classList.remove('active');
-
-    // Completely strip the model source so it stops rendering in the background
-    viewer.removeAttribute('src');
-    viewer.removeAttribute('ios-src');
-    
-    // Reset loader for next time
-    loader.style.display = 'none';
+    document.getElementById('viewer-overlay').classList.remove('active');
+    // Wipe the viewer on close to keep the site fast
+    document.getElementById('viewer-frame').innerHTML = '';
 };
 
     // --- INTERNAL LOGIC ---
