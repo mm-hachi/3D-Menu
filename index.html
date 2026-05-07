@@ -75,6 +75,163 @@
 
         </div>
     </section>
+    <!-- Put this right before the closing </body> tag -->
+<script type="module">
+    // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
 
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
+    authDomain: "shot47-database.firebaseapp.com",
+    projectId: "shot47-database",
+    storageBucket: "shot47-database.firebasestorage.app",
+    messagingSenderId: "77237094269",
+    appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    
+    // We categorize the database collection by page name
+    const categoryName = "hospitality_models"; 
+    let modelsData = [];
+
+    // --- DATABASE: Fetch & Render ---
+    async function loadFromDatabase() {
+        modelsData = [];
+        const querySnapshot = await getDocs(collection(db, categoryName));
+        querySnapshot.forEach((doc) => {
+            // Push the data, plus the unique database ID for deletions
+            modelsData.push({ db_id: doc.id, ...doc.data() }); 
+        });
+        renderGrid();
+    }
+
+    function renderGrid() {
+        const grid = document.getElementById('model-grid');
+        grid.innerHTML = ''; 
+        
+        modelsData.forEach((model, index) => {
+            // Notice deleteCard now uses model.db_id instead of just an index
+            const cardHTML = `
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition">
+                <div class="flex items-center gap-4 cursor-pointer flex-1" onclick="openViewer(${index})">
+                    <img src="${model.img}" class="w-16 h-16 rounded-lg object-cover bg-slate-100">
+                    <div>
+                        <h3 class="font-bold text-slate-900">${model.title}</h3>
+                        <p class="text-xs text-slate-500">${model.desc}</p>
+                    </div>
+                </div>
+                <button onclick="deleteCard('${model.db_id}')" class="admin-controls ml-4 text-red-500 hover:text-red-700 p-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                </button>
+            </div>`;
+            grid.insertAdjacentHTML('beforeend', cardHTML);
+        });
+    }
+
+    // --- SECURITY: Admin Login ---
+    window.toggleAdmin = async function() {
+        if(document.body.classList.contains('admin-mode')) {
+            await signOut(auth); // Securely log out
+            alert("Logged out securely.");
+            return;
+        }
+        
+        const email = prompt("Admin Email:");
+        const pass = prompt("Admin Password:");
+        
+        try {
+            await signInWithEmailAndPassword(auth, email, pass);
+            alert("Login Successful. Admin rights granted.");
+        } catch (error) {
+            alert("Login Failed: " + error.message);
+        }
+    }
+
+    // Listen for login state changes
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            document.body.classList.add('admin-mode');
+        } else {
+            document.body.classList.remove('admin-mode');
+        }
+    });
+
+    // --- DATABASE: Write & Delete ---
+    window.addNewCard = async function() {
+        const title = prompt("Enter Scan Title:");
+        if(!title) return;
+        const desc = prompt("Enter brief description:");
+        const glb = prompt("Enter Google Drive GLB ID:");
+        const usdz = prompt("Enter Google Drive USDZ ID:");
+        
+        const newModel = {
+            title: title, 
+            desc: desc, 
+            glb: glb, 
+            usdz: usdz,
+            img: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80",
+            createdAt: new Date()
+        };
+
+        try {
+            // Push to Google's cloud database
+            await addDoc(collection(db, categoryName), newModel);
+            loadFromDatabase(); // Refresh the grid
+        } catch (e) {
+            alert("Error adding document. Are you logged in? " + e);
+        }
+    }
+
+    window.deleteCard = async function(db_id) {
+        if(confirm("Permanently delete this scan from the global database?")) {
+            try {
+                await deleteDoc(doc(db, categoryName, db_id));
+                loadFromDatabase(); // Refresh the grid
+            } catch (e) {
+                alert("Error deleting: " + e);
+            }
+        }
+    }
+
+    // --- 3D VIEWER LOGIC (Remains largely the same) ---
+    const proxyBase = "https://drive-proxy.yourname.workers.dev/?id=";
+    
+    window.openViewer = function(index) {
+        const model = modelsData[index];
+        document.getElementById('sidebar-title').innerText = model.title;
+        document.getElementById('sidebar-desc').innerText = model.desc;
+
+        const viewer = document.getElementById('main-viewer');
+        const overlay = document.getElementById('viewer-overlay');
+        const loader = document.getElementById('loading-ui');
+        
+        overlay.classList.add('active');
+        loader.style.display = 'flex';
+        
+        viewer.setAttribute('src', proxyBase + model.glb);
+        viewer.setAttribute('ios-src', proxyBase + model.usdz);
+        viewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
+    }
+
+    window.closeViewer = function() {
+        document.getElementById('viewer-overlay').classList.remove('active');
+        setTimeout(() => {
+            const viewer = document.getElementById('main-viewer');
+            viewer.setAttribute('src', '');
+            viewer.setAttribute('ios-src', '');
+        }, 300);
+    }
+
+    // Initialize: Fetch data from Cloud on page load
+    loadFromDatabase();
+</script>
 </body>
 </html>
