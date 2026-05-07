@@ -171,30 +171,65 @@
     };
 
     window.openViewer = function(index) {
-        const model = modelsData[index];
-        document.getElementById('sidebar-title').innerText = model.title;
-        document.getElementById('sidebar-desc').innerText = model.desc;
+    const model = modelsData[index];
+    
+    // 1. Populate text immediately
+    document.getElementById('sidebar-title').innerText = model.title;
+    document.getElementById('sidebar-desc').innerText = model.desc;
 
-        const viewer = document.getElementById('main-viewer');
-        const overlay = document.getElementById('viewer-overlay');
-        const loader = document.getElementById('loading-ui');
-        
-        overlay.classList.add('active');
-        loader.style.display = 'flex';
-        
-        // Ensure you replace this with your actual Cloudflare Worker URL
-        const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
-        viewer.setAttribute('src', proxyBase + model.glb);
-        viewer.setAttribute('ios-src', proxyBase + model.usdz);
-        viewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
-    };
+    const viewer = document.getElementById('main-viewer');
+    const overlay = document.getElementById('viewer-overlay');
+    const loader = document.getElementById('loading-ui');
+    
+    // 2. Show the UI
+    overlay.classList.add('active');
+    loader.style.display = 'flex';
+    
+    // 3. Clear existing attributes first to force a fresh state
+    viewer.removeAttribute('src');
+    viewer.removeAttribute('ios-src');
 
-    window.closeViewer = function() {
-        document.getElementById('viewer-overlay').classList.remove('active');
-        const viewer = document.getElementById('main-viewer');
-        viewer.setAttribute('src', '');
-        viewer.setAttribute('ios-src', '');
+    // 4. Set new sources
+    const proxyBase = "https://drive-proxy.yourname.workers.dev/?id=";
+    const glbUrl = proxyBase + model.glb;
+    const usdzUrl = proxyBase + model.usdz;
+
+    // Use a small timeout to ensure the browser registers the attribute change
+    setTimeout(() => {
+        viewer.setAttribute('src', glbUrl);
+        viewer.setAttribute('ios-src', usdzUrl);
+    }, 50);
+
+    // 5. Improved Load Listener
+    const handleLoad = () => {
+        loader.style.display = 'none';
+        viewer.removeEventListener('load', handleLoad);
     };
+    
+    viewer.addEventListener('load', handleLoad);
+
+    // Fallback: If it takes longer than 10 seconds, hide loader anyway
+    setTimeout(() => {
+        if (loader.style.display === 'flex') {
+            loader.style.display = 'none';
+        }
+    }, 10000);
+};
+
+window.closeViewer = function() {
+    const overlay = document.getElementById('viewer-overlay');
+    const viewer = document.getElementById('main-viewer');
+    const loader = document.getElementById('loading-ui');
+
+    overlay.classList.remove('active');
+
+    // Completely strip the model source so it stops rendering in the background
+    viewer.removeAttribute('src');
+    viewer.removeAttribute('ios-src');
+    
+    // Reset loader for next time
+    loader.style.display = 'none';
+};
 
     // --- INTERNAL LOGIC ---
 
