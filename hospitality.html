@@ -13,6 +13,8 @@
 
         /* Prevents Chrome/Samsung from inverting colors on the 3D model */
         #main-viewer {
+            /* Prevents high-contrast or dark-mode adjustments */
+            forced-color-adjust: none;
             color-scheme: light;
             background-color: transparent; /* Ensures it doesn't get a forced black background */
         }
@@ -75,6 +77,30 @@
 
         .nav-btn:hover, .close-viewer-btn:hover { background-color: #fff; transform: scale(1.1); transition: all 0.2s; }
         .nav-btn:active { transform: scale(0.9); }
+
+        /* 1. Force the background and text colors to be immutable */
+        html, body {
+            background-color: #f8fafc !important;
+            color: #0f172a !important;
+            color-scheme: light !important;
+        }
+        
+        /* 2. Target the overlay specifically */
+        #viewer-overlay, #sidebar-info {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+        }
+        
+        /* 3. Stop Samsung from "darkening" the 3D viewer */
+        #main-viewer {
+            background-color: transparent !important;
+            --poster-color: transparent !important;
+        }
+        
+        /* 4. Ensure navigation text doesn't turn white on white */
+        nav, .nav-btn, .close-viewer-btn {
+            background-color: rgba(255, 255, 255, 0.9) !important;
+        }
     </style>
 </head>
 <body class="antialiased pb-20">
@@ -140,6 +166,8 @@
     </div>
 
 <script type="module">
+    // Force the browser to respect light mode programmatically
+    document.documentElement.style.setProperty('color-scheme', 'light');
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
