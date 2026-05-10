@@ -19,6 +19,34 @@
         
         .loader { border: 3px solid #e2e8f0; border-top: 3px solid #0284c7; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Prevents the background from jumping when interacting with the model */
+        body.modal-open {
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+        }
+        
+        /* Tells the iPhone that touches here are for the model, not the page */
+        #main-viewer {
+            touch-action: none;
+        }
+        
+        /* Ensures the modal container handles its own space */
+        #viewer-overlay {
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* Prevents Chrome/Samsung from inverting colors on the 3D model */
+        #main-viewer {
+            color-scheme: light;
+            background-color: transparent; /* Ensures it doesn't get a forced black background */
+        }
+        
+        /* Specific meta tag for the whole page if you want to be safe */
+        :root {
+            color-scheme: only light;
+        }
     </style>
 </head>
 <body class="antialiased pb-20">
@@ -198,6 +226,10 @@
     newViewer.setAttribute('max-camera-orbit', 'auto 90deg auto');
     newViewer.setAttribute('shadow-intensity', '1');
     newViewer.setAttribute('auto-rotate', '');
+        // ADD THESE:
+    newViewer.setAttribute('exposure', '1'); // Keeps brightness consistent
+    newViewer.setAttribute('environment-image', 'neutral'); // Uses a neutral lighting rig
+    newViewer.style.backgroundColor = "transparent";
 
     // 5. Set sources
     const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
@@ -221,12 +253,20 @@
 
     // Emergency Timeout
     // setTimeout(() => { loader.style.display = 'none'; }, 12000);
+        // ADD THIS LINE: Lock the background page
+    document.body.classList.add('modal-open');
 };
 
 window.closeViewer = function() {
     document.getElementById('viewer-overlay').classList.remove('active');
     // Wipe the viewer on close to keep the site fast
     document.getElementById('viewer-frame').innerHTML = '';
+
+    // ADD THESE LINES: Unlock the background page
+    const scrollY = document.body.style.top;
+    document.body.classList.remove('modal-open');
+    document.body.style.top = '';
+    window.scrollTo(0, parseInt(scrollY || '0') * -1);
 };
 
     // --- INTERNAL LOGIC ---
