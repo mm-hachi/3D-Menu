@@ -127,164 +127,166 @@
         </div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
-            authDomain: "shot47-database.firebaseapp.com",
-            projectId: "shot47-database",
-            storageBucket: "shot47-database.firebasestorage.app",
-            messagingSenderId: "77237094269",
-            appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
-        };
+    const firebaseConfig = {
+        apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
+        authDomain: "shot47-database.firebaseapp.com",
+        projectId: "shot47-database",
+        storageBucket: "shot47-database.firebasestorage.app",
+        messagingSenderId: "77237094269",
+        appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
+    };
 
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-        const categoryName = "hospitality_models"; 
-        let modelsData = [];
-        let currentModelIndex = 0;
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const categoryName = "hospitality_models"; 
+    
+    let modelsData = [];
+    let currentModelIndex = 0; // Tracks position for Next/Prev
 
-        window.toggleAdmin = async function() {
-            if(document.body.classList.contains('admin-mode')) { await signOut(auth); return; }
-            const email = prompt("Admin Email:");
-            const pass = prompt("Admin Password:");
-            if(email && pass) {
-                try { await signInWithEmailAndPassword(auth, email, pass); } catch (e) { alert("Login Failed"); }
-            }
-        };
+    // --- NAVIGATION & VIEWER LOGIC ---
 
-        window.addNewCard = async function() {
-            const title = prompt("Scan Title:"); if(!title) return;
-            const desc = prompt("Description:");
-            const glb = prompt("GLB ID:");
-            const usdz = prompt("USDZ ID:");
-            try {
-                await addDoc(collection(db, categoryName), {
-                    title, desc, glb, usdz,
-                    img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80",
-                    createdAt: new Date()
-                });
-                loadFromDatabase();
-            } catch (e) { alert("Error"); }
-        };
+    window.openViewer = function(index) {
+        currentModelIndex = index;
+        const model = modelsData[index];
+        const viewerContainer = document.getElementById('viewer-frame');
+        const overlay = document.getElementById('viewer-overlay');
+        const loader = document.getElementById('loading-ui');
+        
+        document.getElementById('sidebar-title').innerText = model.title;
+        document.getElementById('sidebar-desc').innerText = model.desc;
 
-        window.deleteCard = async function(db_id) {
-            if(confirm("Delete?")) { await deleteDoc(doc(db, categoryName, db_id)); loadFromDatabase(); }
-        };
+        overlay.classList.add('active');
+        document.body.classList.add('modal-open');
+        loader.style.display = 'flex';
 
-        window.openViewer = function(index) {
-            currentModelIndex = index;
-            const model = modelsData[index];
-            const viewerContainer = document.getElementById('viewer-frame');
-            const overlay = document.getElementById('viewer-overlay');
-            const loader = document.getElementById('loading-ui');
-            
-            document.getElementById('sidebar-title').innerText = model.title;
-            document.getElementById('sidebar-desc').innerText = model.desc;
-        
-            overlay.classList.add('active');
-            document.body.classList.add('modal-open');
-            loader.style.display = 'flex';
-        
-            // 1. STRATEGIC MEMORY CLEANUP
-            const oldViewer = document.getElementById('main-viewer');
-            if(oldViewer) {
-                // Explicitly tell the browser to drop the 3D assets from GPU RAM
-                if (typeof oldViewer.dispose === 'function') {
-                    oldViewer.dispose();
-                }
-                oldViewer.remove();
-            }
-        
-            // 2. CREATE FRESH VIEWER
-            const newViewer = document.createElement('model-viewer');
-            newViewer.id = 'main-viewer';
-            newViewer.className = 'w-full h-full';
-            
-            // Performance tip: lower shadow-softness for mobile
-            newViewer.setAttribute('ar', '');
-            newViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
-            newViewer.setAttribute('camera-controls', '');
-            newViewer.setAttribute('auto-rotate', '');
-            newViewer.setAttribute('shadow-intensity', '0.5'); // Reduced for performance
-            newViewer.setAttribute('exposure', '1');
-            newViewer.setAttribute('environment-image', 'neutral');
-            
-            // Power Management: Stop rendering when not in view
-            newViewer.setAttribute('loading', 'eager');
-            newViewer.setAttribute('reveal', 'auto');
-        
-            const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
-            newViewer.src = proxyBase + model.glb;
-            newViewer.iosSrc = proxyBase + model.usdz;
-        
-            const arButton = document.createElement('button');
-            arButton.slot = 'ar-button';
-            arButton.className = 'absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl cursor-pointer';
-            arButton.innerText = 'View in AR Space';
-            newViewer.appendChild(arButton);
-        
-            viewerContainer.appendChild(newViewer);
-            newViewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
-        };
-        
-        window.closeViewer = function() {
-            document.getElementById('viewer-overlay').classList.remove('active');
-            
-            // Cleanup on close too
-            const viewer = document.getElementById('main-viewer');
-            if(viewer) {
-                if (typeof viewer.dispose === 'function') {
-                    viewer.dispose();
-                }
-                viewer.remove();
-            }
-            
-            document.body.classList.remove('modal-open');
-        };
-
-        async function loadFromDatabase() {
-            const grid = document.getElementById('model-grid');
-            grid.innerHTML = '<p class="text-center py-10 text-slate-400">Loading...</p>';
-            try {
-                const querySnapshot = await getDocs(collection(db, categoryName));
-                modelsData = [];
-                querySnapshot.forEach((doc) => { modelsData.push({ db_id: doc.id, ...doc.data() }); });
-                renderGrid();
-            } catch (e) { console.error(e); }
+        // 1. CLEAR MEMORY (Crucial for iPhone stability)
+        const oldViewer = document.getElementById('main-viewer');
+        if(oldViewer) {
+            if (typeof oldViewer.dispose === 'function') oldViewer.dispose();
+            oldViewer.remove();
         }
 
-        function renderGrid() {
-            const grid = document.getElementById('model-grid');
-            grid.innerHTML = '';
-            modelsData.forEach((model, index) => {
-                const cardHTML = `
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition">
-                    <div class="cursor-pointer flex-1" onclick="openViewer(${index})">
-                        <h3 class="font-bold text-slate-900">${model.title}</h3>
-                        <p class="text-xs text-slate-500">${model.desc}</p>
-                    </div>
-                    <div class="flex items-center gap-4">
-                        <img src="${model.img}" class="w-16 h-16 rounded-lg object-cover bg-slate-100 cursor-pointer" onclick="openViewer(${index})">
-                        <button onclick="deleteCard('${model.db_id}')" class="admin-controls text-red-500 p-2">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        </button>
-                    </div>
-                </div>`;
-                grid.insertAdjacentHTML('beforeend', cardHTML);
+        // 2. CREATE FRESH VIEWER
+        const newViewer = document.createElement('model-viewer');
+        newViewer.id = 'main-viewer';
+        newViewer.className = 'w-full h-full';
+        newViewer.setAttribute('ar', '');
+        newViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+        newViewer.setAttribute('camera-controls', '');
+        newViewer.setAttribute('auto-rotate', '');
+        newViewer.setAttribute('shadow-intensity', '0.6');
+        newViewer.setAttribute('exposure', '1');
+        newViewer.setAttribute('environment-image', 'neutral');
+
+        const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
+        newViewer.src = proxyBase + model.glb;
+        newViewer.iosSrc = proxyBase + model.usdz;
+
+        const arButton = document.createElement('button');
+        arButton.slot = 'ar-button';
+        arButton.className = 'absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl cursor-pointer z-50';
+        arButton.innerText = 'View in AR Space';
+        newViewer.appendChild(arButton);
+
+        viewerContainer.appendChild(newViewer);
+        newViewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
+    };
+
+    // ATTACHED TO WINDOW: This makes the Next/Back buttons work!
+    window.changeModel = function(direction) {
+        let newIndex = currentModelIndex + direction;
+        
+        // Loop around logic
+        if (newIndex >= modelsData.length) newIndex = 0;
+        if (newIndex < 0) newIndex = modelsData.length - 1;
+        
+        window.openViewer(newIndex);
+    };
+
+    window.closeViewer = function() {
+        document.getElementById('viewer-overlay').classList.remove('active');
+        const viewer = document.getElementById('main-viewer');
+        if(viewer) {
+            if (typeof viewer.dispose === 'function') viewer.dispose();
+            viewer.remove();
+        }
+        document.body.classList.remove('modal-open');
+    };
+
+    // --- FIREBASE LOGIC ---
+
+    window.toggleAdmin = async function() {
+        if(document.body.classList.contains('admin-mode')) { await signOut(auth); return; }
+        const email = prompt("Admin Email:");
+        const pass = prompt("Admin Password:");
+        if(email && pass) {
+            try { await signInWithEmailAndPassword(auth, email, pass); } catch (e) { alert("Login Failed"); }
+        }
+    };
+
+    window.addNewCard = async function() {
+        const title = prompt("Scan Title:"); if(!title) return;
+        const desc = prompt("Description:");
+        const glb = prompt("GLB ID:");
+        const usdz = prompt("USDZ ID:");
+        try {
+            await addDoc(collection(db, categoryName), {
+                title, desc, glb, usdz,
+                img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80",
+                createdAt: new Date()
             });
-        }
+            loadFromDatabase();
+        } catch (e) { alert("Error"); }
+    };
 
-        onAuthStateChanged(auth, (user) => {
-            if (user) document.body.classList.add('admin-mode');
-            else document.body.classList.remove('admin-mode');
+    window.deleteCard = async function(db_id) {
+        if(confirm("Delete?")) { await deleteDoc(doc(db, categoryName, db_id)); loadFromDatabase(); }
+    };
+
+    async function loadFromDatabase() {
+        const grid = document.getElementById('model-grid');
+        grid.innerHTML = '<p class="text-center py-10 text-slate-400">Loading catalog...</p>';
+        try {
+            const querySnapshot = await getDocs(collection(db, categoryName));
+            modelsData = [];
+            querySnapshot.forEach((doc) => { modelsData.push({ db_id: doc.id, ...doc.data() }); });
+            renderGrid();
+        } catch (e) { console.error(e); }
+    }
+
+    function renderGrid() {
+        const grid = document.getElementById('model-grid');
+        grid.innerHTML = '';
+        modelsData.forEach((model, index) => {
+            const cardHTML = `
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition">
+                <div class="cursor-pointer flex-1" onclick="openViewer(${index})">
+                    <h3 class="font-bold text-slate-900">${model.title}</h3>
+                    <p class="text-xs text-slate-500">${model.desc}</p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <img src="${model.img}" class="w-16 h-16 rounded-lg object-cover bg-slate-100 cursor-pointer" onclick="openViewer(${index})">
+                    <button onclick="deleteCard('${model.db_id}')" class="admin-controls text-red-500 p-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>
+            </div>`;
+            grid.insertAdjacentHTML('beforeend', cardHTML);
         });
+    }
 
-        loadFromDatabase();
-    </script>
+    onAuthStateChanged(auth, (user) => {
+        if (user) document.body.classList.add('admin-mode');
+        else document.body.classList.remove('admin-mode');
+    });
+
+    loadFromDatabase();
+</script>
 </body>
 </html>
