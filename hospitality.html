@@ -47,6 +47,35 @@
         :root {
             color-scheme: only light;
         }
+        /* Position the close button to clear the iPhone Notch */
+        .close-viewer-btn {
+            position: absolute;
+            top: 20px; /* Default for desktop */
+            right: 20px;
+            z-index: 60; /* Ensure it stays above the loader and model */
+            background-color: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(4px);
+            width: 44px; /* Slightly larger for easier tapping on mobile */
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            items-center;
+            justify-center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+        }
+        
+        /* iOS Specific Adjustment */
+        @supports (padding-top: env(safe-area-inset-top)) {
+            .close-viewer-btn {
+                top: calc(env(safe-area-inset-top) + 15px);
+            }
+        }
+        
+        .close-viewer-btn:hover {
+            background-color: #fff;
+            transform: scale(1.05);
+        }
     </style>
 </head>
 <body class="antialiased pb-20">
