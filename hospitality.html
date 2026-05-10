@@ -50,24 +50,27 @@
         /* Position the close button to clear the iPhone Notch */
         .close-viewer-btn {
             position: absolute;
-            top: 55px; /* Default for desktop */
+            /* Increased from 25px to 55px for standard browsers */
+            top: 55px; 
             right: 20px;
-            z-index: 99; /* Ensure it stays above the loader and model */
+            z-index: 99;
             background-color: rgba(255, 255, 255, 0.9);
             backdrop-filter: blur(8px);
-            width: 46px; /* Slightly larger for easier tapping on mobile */
-            height: 446px;
+            width: 46px;
+            height: 46px;
             border-radius: 50%;
             display: flex;
-            items-center;
-            justify-center;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            transition: all 0.2s ease;
+            align-items: center;
+            justify-content: center; /* Fixed: was justify-center */
+            border: 1px solid rgba(0,0,0,0.05);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            cursor: pointer;
         }
         
-        /* iOS Specific Adjustment */
+        /* The iPhone Notch Fix - Adding the extra 30px here too */
         @supports (padding-top: env(safe-area-inset-top)) {
             .close-viewer-btn {
+                /* Increased from +15px to +45px */
                 top: calc(env(safe-area-inset-top) + 45px);
             }
         }
