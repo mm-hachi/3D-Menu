@@ -10,6 +10,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
+
+        /* Prevents Chrome/Samsung from inverting colors on the 3D model */
+        #main-viewer {
+            color-scheme: light;
+            background-color: transparent; /* Ensures it doesn't get a forced black background */
+        }
+        
+        /* Specific meta tag for the whole page if you want to be safe */
+        :root {
+            color-scheme: only light;
+        }
         
         #viewer-overlay { 
             display: none; 
@@ -184,6 +195,7 @@
         newViewer.setAttribute('shadow-intensity', '0.6');
         newViewer.setAttribute('exposure', '1');
         newViewer.setAttribute('environment-image', 'neutral');
+        newViewer.style.backgroundColor = "transparent";
 
         const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
         newViewer.src = proxyBase + model.glb;
