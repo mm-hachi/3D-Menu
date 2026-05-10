@@ -2,55 +2,42 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shot 47 XLVII | Portfolio Category</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Shot 47 XLVII | Culinary AR Menus</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
         
-        /* Updated Overlay Styles */
-        #viewer-overlay { display: none; opacity: 0; transition: opacity 0.3s ease; }
-        #viewer-overlay.active { display: flex; opacity: 1; }
+        #viewer-overlay { 
+            display: none; 
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            background-color: white;
+        }
+        #viewer-overlay.active { display: flex; animation: slideUp 0.3s ease forwards; }
         
+        @keyframes slideUp {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
         .admin-controls { display: none; }
         body.admin-mode .admin-controls { display: inline-flex; }
         
-        .loader { border: 3px solid #e2e8f0; border-top: 3px solid #0284c7; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
+        .loader { border: 3px solid #e2e8f0; border-top: 3px solid #0284c7; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* Prevents the background from jumping when interacting with the model */
-        body.modal-open {
-            overflow: hidden;
-            position: fixed;
-            width: 100%;
-        }
+        body.modal-open { overflow: hidden; position: fixed; width: 100%; }
+        #main-viewer { touch-action: none; color-scheme: light; }
         
-        /* Tells the iPhone that touches here are for the model, not the page */
-        #main-viewer {
-            touch-action: none;
-        }
-        
-        /* Ensures the modal container handles its own space */
-        #viewer-overlay {
-            -webkit-overflow-scrolling: touch;
-        }
+        :root { color-scheme: only light; }
 
-        /* Prevents Chrome/Samsung from inverting colors on the 3D model */
-        #main-viewer {
-            color-scheme: light;
-            background-color: transparent; /* Ensures it doesn't get a forced black background */
-        }
-        
-        /* Specific meta tag for the whole page if you want to be safe */
-        :root {
-            color-scheme: only light;
-        }
-        /* Position the close button to clear the iPhone Notch */
+        /* Position the close button to clear the iPhone Notch + your requested 30px */
         .close-viewer-btn {
             position: absolute;
-            /* Increased from 25px to 55px for standard browsers */
             top: 55px; 
             right: 20px;
             z-index: 99;
@@ -61,24 +48,19 @@
             border-radius: 50%;
             display: flex;
             align-items: center;
-            justify-content: center; /* Fixed: was justify-center */
+            justify-content: center;
             border: 1px solid rgba(0,0,0,0.05);
             box-shadow: 0 4px 15px rgba(0,0,0,0.15);
             cursor: pointer;
         }
         
-        /* The iPhone Notch Fix - Adding the extra 30px here too */
         @supports (padding-top: env(safe-area-inset-top)) {
             .close-viewer-btn {
-                /* Increased from +15px to +45px */
                 top: calc(env(safe-area-inset-top) + 45px);
             }
         }
         
-        .close-viewer-btn:hover {
-            background-color: #fff;
-            transform: scale(1.05);
-        }
+        .close-viewer-btn:hover { background-color: #fff; transform: scale(1.05); }
     </style>
 </head>
 <body class="antialiased pb-20">
@@ -91,272 +73,196 @@
     </nav>
 
     <section class="pt-32 pb-10 px-6 max-w-4xl mx-auto">
-        <h1 class="text-4xl font-bold text-slate-900 mb-2" id="page-title">Culinary AR Menus</h1>
+        <h1 class="text-4xl font-bold text-slate-900 mb-2">Culinary AR Menus</h1>
         <p class="text-slate-600 mb-8">Select an item to view in high-fidelity 3D.</p>
         
         <button onclick="addNewCard()" class="admin-controls mb-6 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-bold shadow-sm hover:bg-blue-700">
             + Add New Scan
         </button>
         
-        <div id="model-grid" class="flex flex-col gap-4">
-            </div>
+        <div id="model-grid" class="flex flex-col gap-4"></div>
     </section>
 
-    <div id="viewer-overlay" class="fixed inset-0 z-50 flex flex-col md:flex-row bg-white transition-all duration-300 translate-y-full opacity-0">
+    <div id="viewer-overlay" class="flex-col md:flex-row">
         
-        <div class="bg-white rounded-2xl overflow-hidden shadow-2xl max-w-6xl w-full flex flex-col md:flex-row relative">
-            
-            <button onclick="closeViewer()" class="close-viewer-btn text-slate-900 font-bold">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-            </button>
-            <div class="w-full md:w-2/3 h-[50vh] md:h-[75vh] bg-slate-100 relative border-b md:border-b-0 md:border-r border-slate-200">
-                <div id="viewer-frame" class="w-full md:w-2/3 h-[60vh] md:h-full bg-slate-50 relative flex items-center justify-center order-1">
-                    <div id="loading-ui" class="absolute inset-0 flex flex-col items-center justify-center z-40 bg-slate-50">
-                        <div class="loader mb-4"></div>
-                        <p class="text-slate-500 font-medium tracking-wide">Optimizing Asset...</p>
-                    </div>
-                </div>
-                <div class="w-full md:w-1/3 p-8 flex flex-col justify-center bg-white">
-                <div class="text-xs font-bold text-blue-600 mb-2 uppercase tracking-wider">Digital Twin</div>
-                <h2 id="sidebar-title" class="text-3xl font-bold text-slate-900 mb-4">Model Title</h2>
-                <p id="sidebar-desc" class="text-slate-600 leading-relaxed mb-8">Model Description</p>
-                
-                <div class="mt-auto p-5 bg-slate-50 rounded-xl border border-slate-100">
-                    <p class="text-xs text-slate-500 font-bold mb-2 uppercase tracking-wider">Interaction Guide</p>
-                    <ul class="text-sm text-slate-600 space-y-1">
-                        <li>• <b>Desktop:</b> Click and drag to rotate. Scroll to zoom.</li>
-                        <li>• <b>Mobile:</b> Swipe to rotate. Pinch to zoom.</li>
-                        <li>• <b>AR:</b> Tap the blue button on a compatible smartphone.</li>
-                    </ul>
-                </div>
+        <button onclick="closeViewer()" class="close-viewer-btn text-slate-900">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+
+        <div id="viewer-frame" class="w-full md:w-2/3 h-[55vh] md:h-full bg-slate-50 relative flex items-center justify-center order-1">
+            <div id="loading-ui" class="absolute inset-0 flex flex-col items-center justify-center z-40 bg-slate-50">
+                <div class="loader mb-4"></div>
+                <p class="text-slate-500 font-medium tracking-wide">Optimizing Asset...</p>
             </div>
-                <model-viewer id="main-viewer" class="w-full h-full"
-                    ar ar-modes="webxr scene-viewer quick-look" 
-                    camera-controls 
-                    max-camera-orbit="auto 90deg auto"
-                    min-camera-orbit="auto 0deg auto"
-                    shadow-intensity="1" auto-rotate>
-                    
-                    <button slot="ar-button" class="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl hover:bg-blue-700 transition">
-                        View in AR Space
-                    </button>
-                </model-viewer>
+            </div>
+
+        <div id="sidebar-info" class="w-full md:w-1/3 p-8 md:p-12 flex flex-col justify-center bg-white order-2 border-t md:border-t-0 md:border-l border-slate-200">
+            <div class="text-xs font-bold text-blue-600 mb-2 uppercase tracking-wider">Digital Twin</div>
+            <h2 id="sidebar-title" class="text-3xl font-bold text-slate-900 mb-4">Model Title</h2>
+            <p id="sidebar-desc" class="text-slate-600 leading-relaxed mb-8">Model Description</p>
+            
+            <div class="p-5 bg-slate-50 rounded-xl border border-slate-100">
+                <p class="text-xs text-slate-500 font-bold mb-2 uppercase tracking-wider">Interaction Guide</p>
+                <ul class="text-sm text-slate-600 space-y-1">
+                    <li>• <b>Desktop:</b> Drag to rotate. Scroll to zoom.</li>
+                    <li>• <b>Mobile:</b> Swipe to rotate. Pinch to zoom.</li>
+                    <li>• <b>AR:</b> Tap the blue button on your smartphone.</li>
+                </ul>
             </div>
         </div>
     </div>
+
     <script type="module">
-    // 1. Import EVERYTHING needed from the Firebase CDN
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { 
-        getFirestore, 
-        collection, 
-        getDocs, 
-        addDoc, 
-        deleteDoc, 
-        doc 
-    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-    import { 
-        getAuth, 
-        signInWithEmailAndPassword, 
-        onAuthStateChanged, 
-        signOut 
-    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-    // 2. Your Firebase Configuration (Ensure these are your actual keys)
-    const firebaseConfig = {
-        apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
-        authDomain: "shot47-database.firebaseapp.com",
-        projectId: "shot47-database",
-        storageBucket: "shot47-database.firebasestorage.app",
-        messagingSenderId: "77237094269",
-        appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
-    };
+        const firebaseConfig = {
+            apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
+            authDomain: "shot47-database.firebaseapp.com",
+            projectId: "shot47-database",
+            storageBucket: "shot47-database.firebasestorage.app",
+            messagingSenderId: "77237094269",
+            appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
+        };
 
-    // 3. Initialize Services
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const auth = getAuth(app);
-    
-    const categoryName = "hospitality_models"; 
-    let modelsData = [];
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const categoryName = "hospitality_models"; 
+        let modelsData = [];
 
-    // --- GLOBAL FUNCTIONS (Attached to 'window' so HTML can call them) ---
+        window.toggleAdmin = async function() {
+            if(document.body.classList.contains('admin-mode')) {
+                await signOut(auth);
+                return;
+            }
+            const email = prompt("Admin Email:");
+            const pass = prompt("Admin Password:");
+            if(email && pass) {
+                try { await signInWithEmailAndPassword(auth, email, pass); } 
+                catch (error) { alert("Login Failed"); }
+            }
+        };
 
-    window.toggleAdmin = async function() {
-        if(document.body.classList.contains('admin-mode')) {
-            await signOut(auth);
-            alert("Logged out.");
-            return;
-        }
-        const email = prompt("Admin Email:");
-        const pass = prompt("Admin Password:");
-        try {
-            await signInWithEmailAndPassword(auth, email, pass);
-        } catch (error) {
-            alert("Login Failed: " + error.message);
-        }
-    };
-
-    window.addNewCard = async function() {
-        const title = prompt("Enter Scan Title:");
-        if(!title) return;
-        const desc = prompt("Description:");
-        const glb = prompt("GLB ID:");
-        const usdz = prompt("USDZ ID:");
-        
-        try {
-            await addDoc(collection(db, categoryName), {
-                title, desc, glb, usdz,
-                img: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80",
-                createdAt: new Date()
-            });
-            loadFromDatabase();
-        } catch (e) {
-            alert("Error: " + e.message);
-        }
-    };
-
-    window.deleteCard = async function(db_id) {
-        if(confirm("Delete this scan?")) {
+        window.addNewCard = async function() {
+            const title = prompt("Scan Title:");
+            if(!title) return;
+            const desc = prompt("Description:");
+            const glb = prompt("GLB ID:");
+            const usdz = prompt("USDZ ID:");
             try {
+                await addDoc(collection(db, categoryName), {
+                    title, desc, glb, usdz,
+                    img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80",
+                    createdAt: new Date()
+                });
+                loadFromDatabase();
+            } catch (e) { alert("Error adding document"); }
+        };
+
+        window.deleteCard = async function(db_id) {
+            if(confirm("Delete this scan?")) {
                 await deleteDoc(doc(db, categoryName, db_id));
                 loadFromDatabase();
-            } catch (e) {
-                alert("Error: " + e.message);
             }
+        };
+
+        window.openViewer = function(index) {
+            const model = modelsData[index];
+            const viewerContainer = document.getElementById('viewer-frame');
+            const overlay = document.getElementById('viewer-overlay');
+            const loader = document.getElementById('loading-ui');
+            
+            document.getElementById('sidebar-title').innerText = model.title;
+            document.getElementById('sidebar-desc').innerText = model.desc;
+
+            overlay.classList.add('active');
+            document.body.classList.add('modal-open');
+            loader.style.display = 'flex';
+
+            // Clean reset of viewer
+            const oldViewer = document.getElementById('main-viewer');
+            if(oldViewer) oldViewer.remove();
+
+            const newViewer = document.createElement('model-viewer');
+            newViewer.id = 'main-viewer';
+            newViewer.className = 'w-full h-full';
+            newViewer.setAttribute('ar', '');
+            newViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+            newViewer.setAttribute('camera-controls', '');
+            newViewer.setAttribute('auto-rotate', '');
+            newViewer.setAttribute('shadow-intensity', '1');
+            newViewer.setAttribute('exposure', '1');
+            newViewer.setAttribute('environment-image', 'neutral');
+
+            const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
+            newViewer.src = proxyBase + model.glb;
+            newViewer.iosSrc = proxyBase + model.usdz;
+
+            const arButton = document.createElement('button');
+            arButton.slot = 'ar-button';
+            arButton.className = 'absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl';
+            arButton.innerText = 'View in AR Space';
+            newViewer.appendChild(arButton);
+
+            viewerContainer.appendChild(newViewer);
+
+            newViewer.addEventListener('load', () => {
+                loader.style.display = 'none';
+            }, { once: true });
+        };
+
+        window.closeViewer = function() {
+            document.getElementById('viewer-overlay').classList.remove('active');
+            const viewer = document.getElementById('main-viewer');
+            if(viewer) viewer.remove();
+            document.body.classList.remove('modal-open');
+        };
+
+        async function loadFromDatabase() {
+            const grid = document.getElementById('model-grid');
+            grid.innerHTML = '<p class="text-center py-10 text-slate-400">Loading catalog...</p>';
+            try {
+                const querySnapshot = await getDocs(collection(db, categoryName));
+                modelsData = [];
+                querySnapshot.forEach((doc) => {
+                    modelsData.push({ db_id: doc.id, ...doc.data() });
+                });
+                renderGrid();
+            } catch (e) { console.error(e); }
         }
-    };
 
-    window.openViewer = function(index) {
-    const model = modelsData[index];
-    const viewerContainer = document.getElementById('viewer-frame'); // We will add this ID to your HTML
-    const overlay = document.getElementById('viewer-overlay');
-    const loader = document.getElementById('loading-ui');
-    
-    // 1. Update Text
-    document.getElementById('sidebar-title').innerText = model.title;
-    document.getElementById('sidebar-desc').innerText = model.desc;
-
-    // 2. Show UI
-    overlay.classList.add('active');
-    loader.style.display = 'flex';
-
-    // 3. THE FIX: Clear the old viewer entirely to free up GPU memory
-    viewerContainer.innerHTML = ''; 
-
-    // 4. Create a BRAND NEW viewer element
-    const newViewer = document.createElement('model-viewer');
-    newViewer.id = 'main-viewer';
-    newViewer.className = 'w-full h-full';
-    newViewer.setAttribute('ar', '');
-    newViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
-    newViewer.setAttribute('camera-controls', '');
-    newViewer.setAttribute('max-camera-orbit', 'auto 90deg auto');
-    newViewer.setAttribute('shadow-intensity', '1');
-    newViewer.setAttribute('auto-rotate', '');
-        // ADD THESE:
-    newViewer.setAttribute('exposure', '1'); // Keeps brightness consistent
-    newViewer.setAttribute('environment-image', 'neutral'); // Uses a neutral lighting rig
-    newViewer.style.backgroundColor = "transparent";
-
-    // 5. Set sources
-    const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
-    newViewer.setAttribute('src', proxyBase + model.glb);
-    newViewer.setAttribute('ios-src', proxyBase + model.usdz);
-
-    // 6. Add the AR Button inside the new viewer
-    const arButton = document.createElement('button');
-    arButton.slot = 'ar-button';
-    arButton.className = 'absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl';
-    arButton.innerText = 'View in AR Space';
-    newViewer.appendChild(arButton);
-
-    // 7. Inject the fresh viewer into the page
-    viewerContainer.appendChild(newViewer);
-
-    // 8. Handle Loading
-    newViewer.addEventListener('load', () => {
-        loader.style.display = 'none';
-    }, { once: true });
-
-    // Emergency Timeout
-    // setTimeout(() => { loader.style.display = 'none'; }, 12000);
-        // ADD THIS LINE: Lock the background page
-    document.body.classList.add('modal-open');
-};
-
-window.closeViewer = function() {
-    document.getElementById('viewer-overlay').classList.remove('active');
-    // Wipe the viewer on close to keep the site fast
-    document.getElementById('viewer-frame').innerHTML = '';
-
-    // ADD THESE LINES: Unlock the background page
-    const scrollY = document.body.style.top;
-    document.body.classList.remove('modal-open');
-    document.body.style.top = '';
-    window.scrollTo(0, parseInt(scrollY || '0') * -1);
-};
-
-    // --- INTERNAL LOGIC ---
-
-    async function loadFromDatabase() {
-        const grid = document.getElementById('model-grid');
-        grid.innerHTML = '<p class="text-center py-10 text-slate-400">Loading catalog...</p>';
-        
-        try {
-            const querySnapshot = await getDocs(collection(db, categoryName));
-            modelsData = [];
-            querySnapshot.forEach((doc) => {
-                modelsData.push({ db_id: doc.id, ...doc.data() });
+        function renderGrid() {
+            const grid = document.getElementById('model-grid');
+            grid.innerHTML = '';
+            modelsData.forEach((model, index) => {
+                const cardHTML = `
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition">
+                    <div class="cursor-pointer flex-1" onclick="openViewer(${index})">
+                        <h3 class="font-bold text-slate-900">${model.title}</h3>
+                        <p class="text-xs text-slate-500">${model.desc}</p>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <img src="${model.img}" class="w-16 h-16 rounded-lg object-cover bg-slate-100 cursor-pointer" onclick="openViewer(${index})">
+                        <button onclick="deleteCard('${model.db_id}')" class="admin-controls text-red-500 p-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                </div>`;
+                grid.insertAdjacentHTML('beforeend', cardHTML);
             });
-            renderGrid();
-        } catch (e) {
-            grid.innerHTML = '<p class="text-red-500">Error loading database. Check console.</p>';
-            console.error(e);
         }
-    }
 
-    function renderGrid() {
-        const grid = document.getElementById('model-grid');
-        grid.innerHTML = '';
-        if (modelsData.length === 0) {
-            grid.innerHTML = '<p class="text-center py-10 text-slate-400">No scans found. Log in to add one.</p>';
-            return;
-        }
-        modelsData.forEach((model, index) => {
-            const cardHTML = `
-            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition">
-                
-                <div class="cursor-pointer flex-1" onclick="openViewer(${index})">
-                    <h3 class="font-bold text-slate-900">${model.title}</h3>
-                    <p class="text-xs text-slate-500">${model.desc}</p>
-                </div>
-            
-                <div class="flex items-center gap-4">
-                    <img src="${model.img}" class="w-16 h-16 rounded-lg object-cover bg-slate-100 cursor-pointer" onclick="openViewer(${index})">
-                    
-                    <button onclick="deleteCard('${model.db_id}')" class="admin-controls text-red-500 hover:text-red-700 p-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                        </svg>
-                    </button>
-                </div>
-            
-            </div>`;
-            grid.insertAdjacentHTML('beforeend', cardHTML);
+        onAuthStateChanged(auth, (user) => {
+            if (user) document.body.classList.add('admin-mode');
+            else document.body.classList.remove('admin-mode');
         });
-    }
 
-    onAuthStateChanged(auth, (user) => {
-        if (user) document.body.classList.add('admin-mode');
-        else document.body.classList.remove('admin-mode');
-    });
-
-    // Start
-    loadFromDatabase();
-</script>
+        loadFromDatabase();
+    </script>
 </body>
 </html>
