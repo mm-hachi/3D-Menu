@@ -2,19 +2,105 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shot 47 XLVII | Portfolio Category</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="color-scheme" content="light only">
+    <title>Shot 47 XLVII | Culinary AR Menus</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
-        #viewer-overlay { display: none; }
-        #viewer-overlay.active { display: block; }
+
+        /* Prevents Chrome/Samsung from inverting colors on the 3D model */
+        #main-viewer {
+            /* Prevents high-contrast or dark-mode adjustments */
+            forced-color-adjust: none;
+            color-scheme: light;
+            background-color: transparent; /* Ensures it doesn't get a forced black background */
+        }
+        
+        /* Specific meta tag for the whole page if you want to be safe */
+        :root {
+            color-scheme: only light;
+        }
+        
+        #viewer-overlay { 
+            display: none; 
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            background-color: white;
+        }
+        #viewer-overlay.active { display: flex; animation: slideUp 0.3s ease forwards; }
+        
+        @keyframes slideUp {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
         .admin-controls { display: none; }
         body.admin-mode .admin-controls { display: inline-flex; }
-        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #000; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
+        
+        .loader { border: 3px solid #e2e8f0; border-top: 3px solid #0284c7; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        body.modal-open { overflow: hidden; position: fixed; width: 100%; }
+        #main-viewer { touch-action: none; color-scheme: light; }
+        
+        :root { color-scheme: only light; }
+
+        .close-viewer-btn, .nav-btn {
+            z-index: 100; /* Ensure buttons stay above 3D viewer */
+            cursor: pointer !important;
+            pointer-events: auto;
+        }
+
+        .close-viewer-btn {
+            position: absolute;
+            top: 55px; 
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(8px);
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(0,0,0,0.05);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        }
+        
+        @supports (padding-top: env(safe-area-inset-top)) {
+            .close-viewer-btn { top: calc(env(safe-area-inset-top) + 45px); }
+        }
+
+        .nav-btn:hover, .close-viewer-btn:hover { background-color: #fff; transform: scale(1.1); transition: all 0.2s; }
+        .nav-btn:active { transform: scale(0.9); }
+
+        /* 1. Force the background and text colors to be immutable */
+        html, body {
+            background-color: #f8fafc !important;
+            color: #0f172a !important;
+            color-scheme: light !important;
+        }
+        
+        /* 2. Target the overlay specifically */
+        #viewer-overlay, #sidebar-info {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+        }
+        
+        /* 3. Stop Samsung from "darkening" the 3D viewer */
+        #main-viewer {
+            background-color: transparent !important;
+            --poster-color: transparent !important;
+        }
+        
+        /* 4. Ensure navigation text doesn't turn white on white */
+        nav, .nav-btn, .close-viewer-btn {
+            background-color: rgba(255, 255, 255, 0.9) !important;
+        }
     </style>
 </head>
 <body class="antialiased pb-20">
@@ -27,136 +113,221 @@
     </nav>
 
     <section class="pt-32 pb-10 px-6 max-w-4xl mx-auto">
-        <h1 class="text-4xl font-bold text-slate-900 mb-2" id="page-title">Culinary AR Menus</h1>
+        <h1 class="text-4xl font-bold text-slate-900 mb-2">Furniture & Decor</h1>
         <p class="text-slate-600 mb-8">Select an item to view in high-fidelity 3D.</p>
         
         <button onclick="addNewCard()" class="admin-controls mb-6 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-bold shadow-sm hover:bg-blue-700">
             + Add New Scan
         </button>
         
-        <div id="model-grid" class="flex flex-col gap-4">
-            </div>
+        <div id="model-grid" class="flex flex-col gap-4"></div>
     </section>
 
-    <div id="viewer-overlay" class="fixed inset-0 bg-white z-50">
-        <button onclick="closeViewer()" class="absolute top-6 right-6 z-50 bg-slate-900 text-white px-5 py-2 rounded-full font-semibold shadow-lg">Close</button>
-        <div id="loading-ui" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center z-40">
-            <div class="loader mb-4"></div><p class="text-slate-600 font-medium tracking-wide">Loading Assets...</p>
+    <div id="viewer-overlay" class="flex-col md:flex-row">
+        
+        <button onclick="closeViewer()" class="close-viewer-btn text-slate-900">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+
+        <div id="viewer-frame" class="w-full md:w-2/3 h-[55vh] md:h-full bg-slate-50 relative flex items-center justify-center order-1">
+            
+            <div class="absolute inset-0 flex items-center justify-between px-4 z-50 pointer-events-none">
+                <button onclick="changeModel(-1)" class="nav-btn pointer-events-auto bg-white/90 backdrop-blur-md p-3 rounded-full shadow-lg text-slate-900 border border-slate-200">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"></path></svg>
+                </button>
+                <button onclick="changeModel(1)" class="nav-btn pointer-events-auto bg-white/90 backdrop-blur-md p-3 rounded-full shadow-lg text-slate-900 border border-slate-200">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M9 5l6 6-6 6"></path></svg>
+                </button>
+            </div>
+
+            <div id="loading-ui" class="absolute inset-0 flex flex-col items-center justify-center z-40 bg-slate-50">
+                <div class="loader mb-4"></div>
+                <p class="text-slate-500 font-medium tracking-wide">Optimizing Asset...</p>
+            </div>
         </div>
-        <model-viewer id="main-viewer" ar ar-modes="webxr scene-viewer quick-look" camera-controls shadow-intensity="1" auto-rotate>
-            <button slot="ar-button" class="absolute bottom-10 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-full font-bold shadow-xl">View in AR Space</button>
-        </model-viewer>
+
+        <div id="sidebar-info" class="w-full md:w-1/3 p-8 md:p-12 flex flex-col justify-center bg-white order-2 border-t md:border-t-0 md:border-l border-slate-200">
+            <div class="text-xs font-bold text-blue-600 mb-2 uppercase tracking-wider">Digital Twin</div>
+            <h2 id="sidebar-title" class="text-3xl font-bold text-slate-900 mb-4">Model Title</h2>
+            <p id="sidebar-desc" class="text-slate-600 leading-relaxed mb-8">Model Description</p>
+            
+            <div class="p-5 bg-slate-50 rounded-xl border border-slate-100">
+                <p class="text-xs text-slate-500 font-bold mb-2 uppercase tracking-wider">Interaction Guide</p>
+                <ul class="text-sm text-slate-600 space-y-1">
+                    <li>• <b>Desktop:</b> Drag to rotate. Scroll to zoom.</li>
+                    <li>• <b>Mobile:</b> Swipe to rotate. Pinch to zoom.</li>
+                    <li>• <b>AR:</b> Tap the blue button on your smartphone.</li>
+                </ul>
+            </div>
+        </div>
     </div>
 
-    <script>
-        // 1. Setup Data & LocalStorage
-        const pageID = "shot47_hospitality_data"; // CHANGE THIS ID FOR EACH SEPARATE HTML PAGE
-        const proxyBase = "https://drive-proxy.yourname.workers.dev/?id=";
-        const ADMIN_PASSWORD = "admin"; // Set your password here
+<script type="module">
+    // Force the browser to respect light mode programmatically
+    document.documentElement.style.setProperty('color-scheme', 'light');
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-        // 5 Initial Placeholders
-        const defaultData = [
-            { id: Date.now()+1, title: "Artisan Burger", desc: "4K Texture mapping with subsurface scattering.", glb: "placeholder", usdz: "placeholder", img: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80" },
-            { id: Date.now()+2, title: "Craft Cocktail", desc: "Refraction and liquid physics simulation.", glb: "placeholder", usdz: "placeholder", img: "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&q=80" },
-            { id: Date.now()+3, title: "Seared Steak", desc: "High-density mesh geometry.", glb: "placeholder", usdz: "placeholder", img: "https://images.unsplash.com/photo-1600891964092-4316c288032e?w=400&q=80" },
-            { id: Date.now()+4, title: "Pasta Dish", desc: "Optimized for mobile AR loading.", glb: "placeholder", usdz: "placeholder", img: "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=400&q=80" },
-            { id: Date.now()+5, title: "Desert Platter", desc: "Multi-object photogrammetry scan.", glb: "placeholder", usdz: "placeholder", img: "https://images.unsplash.com/photo-1551024601-bec78aea704b?w=400&q=80" }
-        ];
+    const firebaseConfig = {
+        apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
+        authDomain: "shot47-database.firebaseapp.com",
+        projectId: "shot47-database",
+        storageBucket: "shot47-database.firebasestorage.app",
+        messagingSenderId: "77237094269",
+        appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
+    };
 
-        // Load data from storage, or use defaults
-        let modelsData = JSON.parse(localStorage.getItem(pageID)) || defaultData;
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const categoryName = "hospitality_models"; 
+    
+    let modelsData = [];
+    let currentModelIndex = 0; // Tracks position for Next/Prev
 
-        // 2. Render the Grid
-        function renderGrid() {
-            const grid = document.getElementById('model-grid');
-            grid.innerHTML = ''; // Clear current
-            
-            modelsData.forEach((model, index) => {
-                const cardHTML = `
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition">
-                    <div class="flex items-center gap-4 cursor-pointer flex-1" onclick="openViewer('${model.glb}', '${model.usdz}')">
-                        <img src="${model.img}" class="w-16 h-16 rounded-lg object-cover bg-slate-100">
-                        <div>
-                            <h3 class="font-bold text-slate-900">${model.title}</h3>
-                            <p class="text-xs text-slate-500">${model.desc}</p>
-                        </div>
-                    </div>
-                    <button onclick="deleteCard(${index})" class="admin-controls ml-4 text-red-500 hover:text-red-700 p-2">
+    // --- NAVIGATION & VIEWER LOGIC ---
+
+    window.openViewer = function(index) {
+        currentModelIndex = index;
+        const model = modelsData[index];
+        const viewerContainer = document.getElementById('viewer-frame');
+        const overlay = document.getElementById('viewer-overlay');
+        const loader = document.getElementById('loading-ui');
+        
+        document.getElementById('sidebar-title').innerText = model.title;
+        document.getElementById('sidebar-desc').innerText = model.desc;
+
+        overlay.classList.add('active');
+        document.body.classList.add('modal-open');
+        loader.style.display = 'flex';
+
+        // 1. CLEAR MEMORY (Crucial for iPhone stability)
+        const oldViewer = document.getElementById('main-viewer');
+        if(oldViewer) {
+            if (typeof oldViewer.dispose === 'function') oldViewer.dispose();
+            oldViewer.remove();
+        }
+
+        // 2. CREATE FRESH VIEWER
+        const newViewer = document.createElement('model-viewer');
+        newViewer.id = 'main-viewer';
+        newViewer.className = 'w-full h-full';
+        newViewer.setAttribute('ar', '');
+        newViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+        newViewer.setAttribute('camera-controls', '');
+        newViewer.setAttribute('auto-rotate', '');
+        newViewer.setAttribute('shadow-intensity', '0.6');
+        newViewer.setAttribute('exposure', '1');
+        newViewer.setAttribute('environment-image', 'neutral');
+        newViewer.style.backgroundColor = "transparent";
+
+        const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
+        newViewer.src = proxyBase + model.glb;
+        newViewer.iosSrc = proxyBase + model.usdz;
+
+        const arButton = document.createElement('button');
+        arButton.slot = 'ar-button';
+        arButton.className = 'absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl cursor-pointer z-50';
+        arButton.innerText = 'View in AR Space';
+        newViewer.appendChild(arButton);
+
+        viewerContainer.appendChild(newViewer);
+        newViewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
+    };
+
+    // ATTACHED TO WINDOW: This makes the Next/Back buttons work!
+    window.changeModel = function(direction) {
+        let newIndex = currentModelIndex + direction;
+        
+        // Loop around logic
+        if (newIndex >= modelsData.length) newIndex = 0;
+        if (newIndex < 0) newIndex = modelsData.length - 1;
+        
+        window.openViewer(newIndex);
+    };
+
+    window.closeViewer = function() {
+        document.getElementById('viewer-overlay').classList.remove('active');
+        const viewer = document.getElementById('main-viewer');
+        if(viewer) {
+            if (typeof viewer.dispose === 'function') viewer.dispose();
+            viewer.remove();
+        }
+        document.body.classList.remove('modal-open');
+    };
+
+    // --- FIREBASE LOGIC ---
+
+    window.toggleAdmin = async function() {
+        if(document.body.classList.contains('admin-mode')) { await signOut(auth); return; }
+        const email = prompt("Admin Email:");
+        const pass = prompt("Admin Password:");
+        if(email && pass) {
+            try { await signInWithEmailAndPassword(auth, email, pass); } catch (e) { alert("Login Failed"); }
+        }
+    };
+
+    window.addNewCard = async function() {
+        const title = prompt("Scan Title:"); if(!title) return;
+        const desc = prompt("Description:");
+        const glb = prompt("GLB ID:");
+        const usdz = prompt("USDZ ID:");
+        try {
+            await addDoc(collection(db, categoryName), {
+                title, desc, glb, usdz,
+                img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80",
+                createdAt: new Date()
+            });
+            loadFromDatabase();
+        } catch (e) { alert("Error"); }
+    };
+
+    window.deleteCard = async function(db_id) {
+        if(confirm("Delete?")) { await deleteDoc(doc(db, categoryName, db_id)); loadFromDatabase(); }
+    };
+
+    async function loadFromDatabase() {
+        const grid = document.getElementById('model-grid');
+        grid.innerHTML = '<p class="text-center py-10 text-slate-400">Loading catalog...</p>';
+        try {
+            const querySnapshot = await getDocs(collection(db, categoryName));
+            modelsData = [];
+            querySnapshot.forEach((doc) => { modelsData.push({ db_id: doc.id, ...doc.data() }); });
+            renderGrid();
+        } catch (e) { console.error(e); }
+    }
+
+    function renderGrid() {
+        const grid = document.getElementById('model-grid');
+        grid.innerHTML = '';
+        modelsData.forEach((model, index) => {
+            const cardHTML = `
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition">
+                <div class="cursor-pointer flex-1" onclick="openViewer(${index})">
+                    <h3 class="font-bold text-slate-900">${model.title}</h3>
+                    <p class="text-xs text-slate-500">${model.desc}</p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <img src="${model.img}" class="w-16 h-16 rounded-lg object-cover bg-slate-100 cursor-pointer" onclick="openViewer(${index})">
+                    <button onclick="deleteCard('${model.db_id}')" class="admin-controls text-red-500 p-2">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                     </button>
-                </div>`;
-                grid.insertAdjacentHTML('beforeend', cardHTML);
-            });
-            localStorage.setItem(pageID, JSON.stringify(modelsData)); // Save state
-        }
+                </div>
+            </div>`;
+            grid.insertAdjacentHTML('beforeend', cardHTML);
+        });
+    }
 
-        // 3. Admin Security Logic (Local only)
-        function toggleAdmin() {
-            if(document.body.classList.contains('admin-mode')) {
-                document.body.classList.remove('admin-mode');
-                alert("Logged out of edit mode.");
-                return;
-            }
-            const pass = prompt("Enter Admin Password to edit this page:");
-            if (pass === ADMIN_PASSWORD) {
-                document.body.classList.add('admin-mode');
-            } else if (pass !== null) {
-                alert("Incorrect Password.");
-            }
-        }
+    onAuthStateChanged(auth, (user) => {
+        if (user) document.body.classList.add('admin-mode');
+        else document.body.classList.remove('admin-mode');
+    });
 
-        // 4. Edit Functions
-        function addNewCard() {
-            const title = prompt("Enter Scan Title:");
-            if(!title) return;
-            const desc = prompt("Enter brief description:");
-            const glb = prompt("Enter Google Drive GLB ID:");
-            const usdz = prompt("Enter Google Drive USDZ ID:");
-            
-            modelsData.unshift({
-                id: Date.now(),
-                title: title, desc: desc, glb: glb, usdz: usdz,
-                img: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80" // Default generic image
-            });
-            renderGrid();
-        }
-
-        function deleteCard(index) {
-            if(confirm("Are you sure you want to remove this scan from the menu?")) {
-                modelsData.splice(index, 1);
-                renderGrid();
-            }
-        }
-
-        // 5. 3D Viewer Logic
-        function openViewer(glbID, usdzID) {
-            if(glbID === "placeholder") {
-                alert("This is a placeholder card. In admin mode, add a real card with valid Google Drive IDs to view.");
-                return;
-            }
-            const viewer = document.getElementById('main-viewer');
-            const overlay = document.getElementById('viewer-overlay');
-            const loader = document.getElementById('loading-ui');
-            
-            overlay.classList.add('active');
-            loader.style.display = 'block';
-            viewer.setAttribute('src', proxyBase + glbID);
-            viewer.setAttribute('ios-src', proxyBase + usdzID);
-
-            viewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
-        }
-
-        function closeViewer() {
-            document.getElementById('viewer-overlay').classList.remove('active');
-            setTimeout(() => {
-                const viewer = document.getElementById('main-viewer');
-                viewer.setAttribute('src', '');
-                viewer.setAttribute('ios-src', '');
-            }, 300);
-        }
-
-        // Initialize Page
-        renderGrid();
-    </script>
+    loadFromDatabase();
+</script>
 </body>
 </html>
