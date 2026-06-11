@@ -3,20 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="color-scheme" content="light">
-    <title>Shot 47 XLVII | Furniture & Decor AR</title>
+    <meta name="color-scheme" content="light only">
+    <title>Shot 47 XLVII | Furniture & Decor</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background-color: #f8fafc; font-family: 'Inter', sans-serif; color-scheme: light; }
-        
-        /* The Native Gray Loading Bar at the top */
-        #main-viewer::part(default-progress-bar) {
-            background-color: #94a3b8; 
-            height: 4px;
-        }
+        body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
 
+        /* Prevents Chrome/Samsung from inverting colors on the 3D model */
+        #main-viewer {
+            /* Prevents high-contrast or dark-mode adjustments */
+            forced-color-adjust: none;
+            color-scheme: light;
+            background-color: transparent; /* Ensures it doesn't get a forced black background */
+        }
+        
+        /* Specific meta tag for the whole page if you want to be safe */
+        :root {
+            color-scheme: only light;
+        }
+        
         #viewer-overlay { 
             display: none; 
             position: fixed;
@@ -38,10 +45,12 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
         body.modal-open { overflow: hidden; position: fixed; width: 100%; }
-        #main-viewer { touch-action: none; }
+        #main-viewer { touch-action: none; color-scheme: light; }
+        
+        :root { color-scheme: only light; }
 
         .close-viewer-btn, .nav-btn {
-            z-index: 100;
+            z-index: 100; /* Ensure buttons stay above 3D viewer */
             cursor: pointer !important;
             pointer-events: auto;
         }
@@ -61,14 +70,45 @@
             border: 1px solid rgba(0,0,0,0.05);
             box-shadow: 0 4px 15px rgba(0,0,0,0.15);
         }
+        
+        @supports (padding-top: env(safe-area-inset-top)) {
+            .close-viewer-btn { top: calc(env(safe-area-inset-top) + 45px); }
+        }
+
+        .nav-btn:hover, .close-viewer-btn:hover { background-color: #fff; transform: scale(1.1); transition: all 0.2s; }
+        .nav-btn:active { transform: scale(0.9); }
+
+        /* 1. Force the background and text colors to be immutable */
+        html, body {
+            background-color: #f8fafc !important;
+            color: #0f172a !important;
+            color-scheme: light !important;
+        }
+        
+        /* 2. Target the overlay specifically */
+        #viewer-overlay, #sidebar-info {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+        }
+        
+        /* 3. Stop Samsung from "darkening" the 3D viewer */
+        #main-viewer {
+            background-color: transparent !important;
+            --poster-color: transparent !important;
+        }
+        
+        /* 4. Ensure navigation text doesn't turn white on white */
+        nav, .nav-btn, .close-viewer-btn {
+            background-color: rgba(255, 255, 255, 0.9) !important;
+        }
     </style>
 </head>
 <body class="antialiased pb-20">
 
     <nav class="fixed w-full z-40 top-0 bg-white/80 backdrop-blur-md border-b border-slate-200">
         <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-            <a href="index.html" class="font-bold tracking-tight text-xl text-slate-900">← SHOT 47 XLVII</a>
-            <span class="text-sm font-semibold text-slate-500 cursor-pointer" ondblclick="toggleAdmin()">Furniture & Decor Portfolio</span>
+            <a href="index.html" class="font-bold tracking-tight text-xl text-slate-900 hover:text-blue-600 transition">← SHOT 47 XLVII</a>
+            <span class="text-sm font-semibold text-slate-500 cursor-pointer" ondblclick="toggleAdmin()">Category Portfolio</span>
         </div>
     </nav>
 
@@ -76,175 +116,218 @@
         <h1 class="text-4xl font-bold text-slate-900 mb-2">Furniture & Decor</h1>
         <p class="text-slate-600 mb-8">Select an item to view in high-fidelity 3D and place it in your space.</p>
         
-        <button onclick="addNewCard()" class="admin-controls mb-6 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-bold">
-            + Add New Furniture Scan
+        <button onclick="addNewCard()" class="admin-controls mb-6 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-bold shadow-sm hover:bg-blue-700">
+            + Add New Scan
         </button>
+        
         <div id="model-grid" class="flex flex-col gap-4"></div>
     </section>
 
     <div id="viewer-overlay" class="flex-col md:flex-row">
+        
         <button onclick="closeViewer()" class="close-viewer-btn text-slate-900">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
         </button>
 
         <div id="viewer-frame" class="w-full md:w-2/3 h-[55vh] md:h-full bg-slate-50 relative flex items-center justify-center order-1">
+            
             <div class="absolute inset-0 flex items-center justify-between px-4 z-50 pointer-events-none">
-                <button onclick="changeModel(-1)" class="nav-btn pointer-events-auto bg-white/90 p-3 rounded-full shadow-lg border border-slate-200">
+                <button onclick="changeModel(-1)" class="nav-btn pointer-events-auto bg-white/90 backdrop-blur-md p-3 rounded-full shadow-lg text-slate-900 border border-slate-200">
                     <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"></path></svg>
                 </button>
-                <button onclick="changeModel(1)" class="nav-btn pointer-events-auto bg-white/90 p-3 rounded-full shadow-lg border border-slate-200">
+                <button onclick="changeModel(1)" class="nav-btn pointer-events-auto bg-white/90 backdrop-blur-md p-3 rounded-full shadow-lg text-slate-900 border border-slate-200">
                     <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M9 5l6 6-6 6"></path></svg>
                 </button>
             </div>
 
             <div id="loading-ui" class="absolute inset-0 flex flex-col items-center justify-center z-40 bg-slate-50">
                 <div class="loader mb-4"></div>
-                <p class="text-slate-500 font-medium">Loading 3D Twin...</p>
+                <p class="text-slate-500 font-medium tracking-wide">Optimizing Asset...</p>
             </div>
         </div>
 
-        <div id="sidebar-info" class="w-full md:w-1/3 p-8 flex flex-col justify-center bg-white order-2">
-            <h2 id="sidebar-title" class="text-3xl font-bold text-slate-900 mb-4">Title</h2>
-            <p id="sidebar-desc" class="text-slate-600 leading-relaxed">Description</p>
+        <div id="sidebar-info" class="w-full md:w-1/3 p-8 md:p-12 flex flex-col justify-center bg-white order-2 border-t md:border-t-0 md:border-l border-slate-200">
+            <div class="text-xs font-bold text-blue-600 mb-2 uppercase tracking-wider">Digital Twin</div>
+            <h2 id="sidebar-title" class="text-3xl font-bold text-slate-900 mb-4">Model Title</h2>
+            <p id="sidebar-desc" class="text-slate-600 leading-relaxed mb-8">Model Description</p>
+            
+            <div class="p-5 bg-slate-50 rounded-xl border border-slate-100">
+                <p class="text-xs text-slate-500 font-bold mb-2 uppercase tracking-wider">Interaction Guide</p>
+                <ul class="text-sm text-slate-600 space-y-1">
+                    <li>• <b>Desktop:</b> Drag to rotate. Scroll to zoom.</li>
+                    <li>• <b>Mobile:</b> Swipe to rotate. Pinch to zoom.</li>
+                    <li>• <b>AR:</b> Tap the blue button on your smartphone.</li>
+                </ul>
+            </div>
         </div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+<script type="module">
+    // Force the browser to respect light mode programmatically
+    document.documentElement.style.setProperty('color-scheme', 'light');
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
-            authDomain: "shot47-database.firebaseapp.com",
-            projectId: "shot47-database",
-            storageBucket: "shot47-database.firebasestorage.app",
-            messagingSenderId: "77237094269",
-            appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
-        };
+    const firebaseConfig = {
+        apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
+        authDomain: "shot47-database.firebaseapp.com",
+        projectId: "shot47-database",
+        storageBucket: "shot47-database.firebasestorage.app",
+        messagingSenderId: "77237094269",
+        appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
+    };
 
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const categoryName = "furniture_models"; 
+    
+    let modelsData = [];
+    let currentModelIndex = 0; // Tracks position for Next/Prev
+
+    // --- NAVIGATION & VIEWER LOGIC ---
+
+    window.openViewer = function(index) {
+        currentModelIndex = index;
+        const model = modelsData[index];
+        const viewerContainer = document.getElementById('viewer-frame');
+        const overlay = document.getElementById('viewer-overlay');
+        const loader = document.getElementById('loading-ui');
         
-        // Switched category namespace to keep furniture separate from hospitality entries
-        const categoryName = "furniture_models"; 
-        let modelsData = [];
-        let currentModelIndex = 0;
+        document.getElementById('sidebar-title').innerText = model.title;
+        document.getElementById('sidebar-desc').innerText = model.desc;
 
-        window.openViewer = function(index) {
-            currentModelIndex = index;
-            const model = modelsData[index];
-            const viewerContainer = document.getElementById('viewer-frame');
-            const overlay = document.getElementById('viewer-overlay');
-            const loader = document.getElementById('loading-ui');
-            
-            document.getElementById('sidebar-title').innerText = model.title;
-            document.getElementById('sidebar-desc').innerText = model.desc;
+        overlay.classList.add('active');
+        document.body.classList.add('modal-open');
+        loader.style.display = 'flex';
 
-            overlay.classList.add('active');
-            document.body.classList.add('modal-open');
-            loader.style.display = 'flex';
+        // 1. CLEAR MEMORY (Crucial for iPhone stability)
+        const oldViewer = document.getElementById('main-viewer');
+        if(oldViewer) {
+            if (typeof oldViewer.dispose === 'function') oldViewer.dispose();
+            oldViewer.remove();
+        }
 
-            const oldViewer = document.getElementById('main-viewer');
-            if(oldViewer) {
-                if (typeof oldViewer.dispose === 'function') oldViewer.dispose();
-                oldViewer.remove();
-            }
+        // 2. CREATE FRESH VIEWER
+        const newViewer = document.createElement('model-viewer');
+        newViewer.id = 'main-viewer';
+        newViewer.className = 'w-full h-full';
+        newViewer.setAttribute('ar', '');
+        newViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+        newViewer.setAttribute('camera-controls', '');
+        newViewer.setAttribute('auto-rotate', '');
+        newViewer.setAttribute('shadow-intensity', '0.6');
+        newViewer.setAttribute('exposure', '1');
+        newViewer.setAttribute('environment-image', 'neutral');
+        newViewer.style.backgroundColor = "transparent";
 
-            const newViewer = document.createElement('model-viewer');
-            newViewer.id = 'main-viewer';
-            newViewer.className = 'w-full h-full';
-            newViewer.setAttribute('loading', 'eager');
-            newViewer.setAttribute('ar', '');
-            newViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
-            newViewer.setAttribute('camera-controls', '');
-            newViewer.setAttribute('shadow-intensity', '0.6');
-            newViewer.setAttribute('environment-image', 'neutral');
+        const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
+        newViewer.src = proxyBase + model.glb;
+        newViewer.iosSrc = proxyBase + model.usdz;
 
-            newViewer.src = model.glb;
-            newViewer.iosSrc = model.usdz;
+        const arButton = document.createElement('button');
+        arButton.slot = 'ar-button';
+        arButton.className = 'absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl cursor-pointer z-50';
+        arButton.innerText = 'View in AR Space';
+        newViewer.appendChild(arButton);
 
-            const arButton = document.createElement('button');
-            arButton.slot = 'ar-button';
-            arButton.className = 'absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl z-50';
-            arButton.innerText = 'View in AR Space';
-            newViewer.appendChild(arButton);
+        viewerContainer.appendChild(newViewer);
+        newViewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
+    };
 
-            viewerContainer.appendChild(newViewer);
-            newViewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
-        };
+    // ATTACHED TO WINDOW: This makes the Next/Back buttons work!
+    window.changeModel = function(direction) {
+        let newIndex = currentModelIndex + direction;
+        
+        // Loop around logic
+        if (newIndex >= modelsData.length) newIndex = 0;
+        if (newIndex < 0) newIndex = modelsData.length - 1;
+        
+        window.openViewer(newIndex);
+    };
 
-        window.changeModel = function(direction) {
-            let newIndex = currentModelIndex + direction;
-            if (newIndex >= modelsData.length) newIndex = 0;
-            if (newIndex < 0) newIndex = modelsData.length - 1;
-            window.openViewer(newIndex);
-        };
+    window.closeViewer = function() {
+        document.getElementById('viewer-overlay').classList.remove('active');
+        const viewer = document.getElementById('main-viewer');
+        if(viewer) {
+            if (typeof viewer.dispose === 'function') viewer.dispose();
+            viewer.remove();
+        }
+        document.body.classList.remove('modal-open');
+    };
 
-        window.closeViewer = function() {
-            document.getElementById('viewer-overlay').classList.remove('active');
-            const viewer = document.getElementById('main-viewer');
-            if(viewer) {
-                if (typeof viewer.dispose === 'function') viewer.dispose();
-                viewer.remove();
-            }
-            document.body.classList.remove('modal-open');
-        };
+    // --- FIREBASE LOGIC ---
 
-        window.addNewCard = async function() {
-            const title = prompt("Scan Title:");
-            const desc = prompt("Description:");
-            const glb = prompt("Paste Firebase GLB URL:");
-            const usdz = prompt("Paste Firebase USDZ URL:");
-            const img = prompt("Thumbnail Image URL:");
-            if(!title || !glb) return;
-            try {
-                await addDoc(collection(db, categoryName), {
-                    title, desc, glb, usdz, img, createdAt: new Date()
-                });
-                loadFromDatabase();
-            } catch (e) { alert("Error saving."); }
-        };
+    window.toggleAdmin = async function() {
+        if(document.body.classList.contains('admin-mode')) { await signOut(auth); return; }
+        const email = prompt("Admin Email:");
+        const pass = prompt("Admin Password:");
+        if(email && pass) {
+            try { await signInWithEmailAndPassword(auth, email, pass); } catch (e) { alert("Login Failed"); }
+        }
+    };
 
-        window.toggleAdmin = async function() {
-            if(document.body.classList.contains('admin-mode')) { await signOut(auth); return; }
-            const email = prompt("Admin Email:");
-            const pass = prompt("Admin Password:");
-            if(email && pass) {
-                try { await signInWithEmailAndPassword(auth, email, pass); } catch (e) { alert("Login Failed"); }
-            }
-        };
+    window.addNewCard = async function() {
+        const title = prompt("Scan Title:"); if(!title) return;
+        const desc = prompt("Description:");
+        const glb = prompt("GLB ID:");
+        const usdz = prompt("USDZ ID:");
+        try {
+            await addDoc(collection(db, categoryName), {
+                title, desc, glb, usdz,
+                img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80",
+                createdAt: new Date()
+            });
+            loadFromDatabase();
+        } catch (e) { alert("Error"); }
+    };
 
-        async function loadFromDatabase() {
+    window.deleteCard = async function(db_id) {
+        if(confirm("Delete?")) { await deleteDoc(doc(db, categoryName, db_id)); loadFromDatabase(); }
+    };
+
+    async function loadFromDatabase() {
+        const grid = document.getElementById('model-grid');
+        grid.innerHTML = '<p class="text-center py-10 text-slate-400">Loading catalog...</p>';
+        try {
             const querySnapshot = await getDocs(collection(db, categoryName));
             modelsData = [];
             querySnapshot.forEach((doc) => { modelsData.push({ db_id: doc.id, ...doc.data() }); });
             renderGrid();
-        }
+        } catch (e) { console.error(e); }
+    }
 
-        function renderGrid() {
-            const grid = document.getElementById('model-grid');
-            grid.innerHTML = '';
-            modelsData.forEach((model, index) => {
-                grid.insertAdjacentHTML('beforeend', `
-                    <div class="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm">
-                        <div class="cursor-pointer flex-1" onclick="openViewer(${index})">
-                            <h3 class="font-bold text-slate-900">${model.title}</h3>
-                            <p class="text-xs text-slate-500">${model.desc}</p>
-                        </div>
-                        <img src="${model.img}" class="w-16 h-16 rounded-lg object-cover ml-4 cursor-pointer" onclick="openViewer(${index})">
-                    </div>
-                `);
-            });
-        }
-
-        onAuthStateChanged(auth, (user) => {
-            if (user) document.body.classList.add('admin-mode');
-            else document.body.classList.remove('admin-mode');
+    function renderGrid() {
+        const grid = document.getElementById('model-grid');
+        grid.innerHTML = '';
+        modelsData.forEach((model, index) => {
+            const cardHTML = `
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition">
+                <div class="cursor-pointer flex-1" onclick="openViewer(${index})">
+                    <h3 class="font-bold text-slate-900">${model.title}</h3>
+                    <p class="text-xs text-slate-500">${model.desc}</p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <img src="${model.img}" class="w-16 h-16 rounded-lg object-cover bg-slate-100 cursor-pointer" onclick="openViewer(${index})">
+                    <button onclick="deleteCard('${model.db_id}')" class="admin-controls text-red-500 p-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>
+            </div>`;
+            grid.insertAdjacentHTML('beforeend', cardHTML);
         });
+    }
 
-        loadFromDatabase();
-    </script>
+    onAuthStateChanged(auth, (user) => {
+        if (user) document.body.classList.add('admin-mode');
+        else document.body.classList.remove('admin-mode');
+    });
+
+    loadFromDatabase();
+</script>
 </body>
 </html>
