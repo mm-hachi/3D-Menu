@@ -225,6 +225,8 @@
         newViewer.setAttribute('environment-image', 'neutral');
         newViewer.style.backgroundColor = "transparent";
 
+        newViewer.setAttribute('max-camera-orbit', 'auto 90deg auto');
+
         const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
         newViewer.src = proxyBase + model.glb;
         newViewer.iosSrc = proxyBase + model.usdz;
