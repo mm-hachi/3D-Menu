@@ -192,54 +192,68 @@
     // --- NAVIGATION & VIEWER LOGIC ---
 
     window.openViewer = function(index) {
-        currentModelIndex = index;
-        const model = modelsData[index];
-        const viewerContainer = document.getElementById('viewer-frame');
-        const overlay = document.getElementById('viewer-overlay');
-        const loader = document.getElementById('loading-ui');
-        
-        document.getElementById('sidebar-title').innerText = model.title;
-        document.getElementById('sidebar-desc').innerText = model.desc;
+    currentModelIndex = index;
+    const model = modelsData[index];
+    const viewerContainer = document.getElementById('viewer-frame');
+    const overlay = document.getElementById('viewer-overlay');
+    const loader = document.getElementById('loading-ui');
+    
+    document.getElementById('sidebar-title').innerText = model.title;
+    document.getElementById('sidebar-desc').innerText = model.desc;
 
-        overlay.classList.add('active');
-        document.body.classList.add('modal-open');
-        loader.style.display = 'flex';
+    overlay.classList.add('active');
+    document.body.classList.add('modal-open');
+    loader.style.display = 'flex';
 
-        // 1. CLEAR MEMORY (Crucial for iPhone stability)
-        const oldViewer = document.getElementById('main-viewer');
-        if(oldViewer) {
-            if (typeof oldViewer.dispose === 'function') oldViewer.dispose();
-            oldViewer.remove();
+    // --- CRASH PREVENTION ENGINE FOR iPHONE ---
+    const oldViewer = document.getElementById('main-viewer');
+    if(oldViewer) {
+        // 1. Force iOS to release the GPU WebGL context completely
+        const gl = oldViewer.shadowRoot?.querySelector('canvas')?.getContext('webxr-javascript') || 
+                   oldViewer.shadowRoot?.querySelector('canvas')?.getContext('webgl') || 
+                   oldViewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2');
+        if (gl) {
+            gl.getExtension('WEBGL_lose_context')?.loseContext();
         }
 
-        // 2. CREATE FRESH VIEWER
-        const newViewer = document.createElement('model-viewer');
-        newViewer.id = 'main-viewer';
-        newViewer.className = 'w-full h-full';
-        newViewer.setAttribute('ar', '');
-        newViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
-        newViewer.setAttribute('camera-controls', '');
-        newViewer.setAttribute('auto-rotate', '');
-        newViewer.setAttribute('shadow-intensity', '0.6');
-        newViewer.setAttribute('exposure', '1');
-        newViewer.setAttribute('environment-image', 'neutral');
-        newViewer.style.backgroundColor = "transparent";
+        // 2. Run standard model-viewer cleanup routines
+        if (typeof oldViewer.dispose === 'function') oldViewer.dispose();
+        
+        // 3. Wipe the source strings clean so the browser drops the files from active cache
+        oldViewer.src = '';
+        oldViewer.iosSrc = '';
+        oldViewer.remove();
+    }
+    // ------------------------------------------
 
-        newViewer.setAttribute('max-camera-orbit', 'auto 75deg auto');
+    // CREATE FRESH VIEWER
+    const newViewer = document.createElement('model-viewer');
+    newViewer.id = 'main-viewer';
+    newViewer.className = 'w-full h-full';
+    newViewer.setAttribute('loading', 'eager');
+    newViewer.setAttribute('ar', '');
+    newViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+    newViewer.setAttribute('camera-controls', '');
+    newViewer.setAttribute('shadow-intensity', '0.6');
+    newViewer.setAttribute('environment-image', 'neutral');
+    
+    // Limits viewing underneath the object
+    newViewer.setAttribute('max-camera-orbit', 'auto 90deg auto');
 
-        const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
-        newViewer.src = proxyBase + model.glb;
-        newViewer.iosSrc = proxyBase + model.usdz;
+    // RESTORED: Google Drive Proxy Base Configuration
+    const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
+    newViewer.src = proxyBase + model.glb;
+    newViewer.iosSrc = proxyBase + model.usdz;
 
-        const arButton = document.createElement('button');
-        arButton.slot = 'ar-button';
-        arButton.className = 'absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl cursor-pointer z-50';
-        arButton.innerText = 'View in AR Space';
-        newViewer.appendChild(arButton);
+    const arButton = document.createElement('button');
+    arButton.slot = 'ar-button';
+    arButton.className = 'absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl z-50';
+    arButton.innerText = 'View in AR Space';
+    newViewer.appendChild(arButton);
 
-        viewerContainer.appendChild(newViewer);
-        newViewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
-    };
+    viewerContainer.appendChild(newViewer);
+    newViewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
+};
 
     // ATTACHED TO WINDOW: This makes the Next/Back buttons work!
     window.changeModel = function(direction) {
@@ -252,15 +266,23 @@
         window.openViewer(newIndex);
     };
 
-    window.closeViewer = function() {
-        document.getElementById('viewer-overlay').classList.remove('active');
-        const viewer = document.getElementById('main-viewer');
-        if(viewer) {
-            if (typeof viewer.dispose === 'function') viewer.dispose();
-            viewer.remove();
+   window.closeViewer = function() {
+    document.getElementById('viewer-overlay').classList.remove('active');
+    
+    const viewer = document.getElementById('main-viewer');
+    if(viewer) {
+        const gl = viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl') || 
+                   viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2');
+        if (gl) {
+            gl.getExtension('WEBGL_lose_context')?.loseContext();
         }
-        document.body.classList.remove('modal-open');
-    };
+        if (typeof viewer.dispose === 'function') viewer.dispose();
+        viewer.src = '';
+        viewer.iosSrc = '';
+        viewer.remove();
+    }
+    document.body.classList.remove('modal-open');
+};
 
     // --- FIREBASE LOGIC ---
 
