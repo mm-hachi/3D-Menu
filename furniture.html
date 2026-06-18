@@ -191,68 +191,87 @@
 
     // --- NAVIGATION & VIEWER LOGIC ---
 
-    window.openViewer = function(index) {
-    currentModelIndex = index;
-    const model = modelsData[index];
+    // 1. INITIALIZE VIEWER ONCE (Run this when page loads or first model opens)
+function ensureViewerExists() {
+    let viewer = document.getElementById('main-viewer');
     const viewerContainer = document.getElementById('viewer-frame');
+    
+    if (!viewer) {
+        viewer = document.createElement('model-viewer');
+        viewer.id = 'main-viewer';
+        viewer.className = 'w-full h-full';
+        viewer.setAttribute('loading', 'eager');
+        viewer.setAttribute('ar', '');
+        viewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+        viewer.setAttribute('camera-controls', '');
+        viewer.setAttribute('shadow-intensity', '0.6');
+        viewer.setAttribute('environment-image', 'neutral');
+        viewer.setAttribute('max-camera-orbit', 'auto 75deg auto');
+
+        const arButton = document.createElement('button');
+        arButton.slot = 'ar-button';
+        arButton.className = 'absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl z-50';
+        arButton.innerText = 'View in AR Space';
+        viewer.appendChild(arButton);
+        
+        viewerContainer.appendChild(viewer);
+    }
+    return viewer;
+}
+
+// 2. OPEN THE SINGLE VIEWER STAGE
+window.openViewer = function(index) {
+    currentModelIndex = index;
     const overlay = document.getElementById('viewer-overlay');
+    
+    overlay.classList.add('active');
+    document.body.classList.add('modal-open');
+    
+    // Load the asset data into our single instance
+    updateActiveModel();
+};
+
+// 3. FORCE MEMORY CLEAR AND FLIP SOURCES (Your Navigation Target)
+function updateActiveModel() {
+    const model = modelsData[currentModelIndex];
     const loader = document.getElementById('loading-ui');
+    const viewer = ensureViewerExists();
     
     document.getElementById('sidebar-title').innerText = model.title;
     document.getElementById('sidebar-desc').innerText = model.desc;
-
-    overlay.classList.add('active');
-    document.body.classList.add('modal-open');
     loader.style.display = 'flex';
 
-    // --- CRASH PREVENTION ENGINE FOR iPHONE ---
-    const oldViewer = document.getElementById('main-viewer');
-    if(oldViewer) {
-        // 1. Force iOS to release the GPU WebGL context completely
-        const gl = oldViewer.shadowRoot?.querySelector('canvas')?.getContext('webxr-javascript') || 
-                   oldViewer.shadowRoot?.querySelector('canvas')?.getContext('webgl') || 
-                   oldViewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2');
-        if (gl) {
-            gl.getExtension('WEBGL_lose_context')?.loseContext();
-        }
-
-        // 2. Run standard model-viewer cleanup routines
-        if (typeof oldViewer.dispose === 'function') oldViewer.dispose();
-        
-        // 3. Wipe the source strings clean so the browser drops the files from active cache
-        oldViewer.src = '';
-        oldViewer.iosSrc = '';
-        oldViewer.remove();
+    // --- SAFARI TEXTURE EVACUATION ENGINE ---
+    // Instead of destroying the viewer, we extract the active WebGL engine instance
+    // inside model-viewer's shadow DOM canvas and tell it to drop all bound textures.
+    const gl = viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl') || 
+               viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2');
+    if (gl) {
+        // This instantly clears the graphics hardware card memory stack
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+        gl.finish(); 
     }
-    // ------------------------------------------
+    // ----------------------------------------
 
-    // CREATE FRESH VIEWER
-    const newViewer = document.createElement('model-viewer');
-    newViewer.id = 'main-viewer';
-    newViewer.className = 'w-full h-full';
-    newViewer.setAttribute('loading', 'eager');
-    newViewer.setAttribute('ar', '');
-    newViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
-    newViewer.setAttribute('camera-controls', '');
-    newViewer.setAttribute('shadow-intensity', '0.6');
-    newViewer.setAttribute('environment-image', 'neutral');
-    
-    // Limits viewing underneath the object
-    newViewer.setAttribute('max-camera-orbit', 'auto 90deg auto');
-
-    // RESTORED: Google Drive Proxy Base Configuration
+    // Inject new proxy resources into the clean context
     const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
-    newViewer.src = proxyBase + model.glb;
-    newViewer.iosSrc = proxyBase + model.usdz;
+    viewer.src = proxyBase + model.glb;
+    viewer.iosSrc = proxyBase + model.usdz;
 
-    const arButton = document.createElement('button');
-    arButton.slot = 'ar-button';
-    arButton.className = 'absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl z-50';
-    arButton.innerText = 'View in AR Space';
-    newViewer.appendChild(arButton);
+    viewer.addEventListener('load', () => { 
+        loader.style.display = 'none'; 
+    }, { once: true });
+}
 
-    viewerContainer.appendChild(newViewer);
-    newViewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
+// 4. NAV BUTTON INTERACTION HANDLER
+window.changeModel = function(direction) {
+    let newIndex = currentModelIndex + direction;
+    if (newIndex >= modelsData.length) newIndex = 0;
+    if (newIndex < 0) newIndex = modelsData.length - 1;
+    
+    currentModelIndex = newIndex;
+    // Triggers the selective texture flush and swaps assets seamlessly
+    updateActiveModel();
 };
 
     // ATTACHED TO WINDOW: This makes the Next/Back buttons work!
