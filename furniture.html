@@ -91,6 +91,7 @@
             background-color: rgba(255, 255, 255, 0.9) !important;
         }
 
+        /* Smooth page transition views */
         .view-section { display: none; }
         .view-section.active-view { display: block; animation: fadeIn 0.4s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
@@ -132,4 +133,260 @@
             </div>
 
             <div class="relative bg-white rounded-2xl border border-slate-200 overflow-hidden opacity-50 cursor-not-allowed select-none flex flex-col justify-between">
-                <span class="absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-
+                <span class="absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Coming Soon</span>
+                <div class="h-48 bg-slate-100 overflow-hidden grayscale"><img src="https://images.unsplash.com/photo-1534349762230-e0cadf78f5db?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
+                <div class="p-6">
+                    <h3 class="font-bold text-slate-400 text-lg mb-1 uppercase">Decor & Accents</h3>
+                    <p class="text-xs text-slate-400 mb-4">Tabletop staging props, vases, lighting structures, and fine artistic designs.</p>
+                    <span class="text-slate-400 text-xs font-semibold">Locked</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="furniture-catalog-view" class="view-section pt-32 px-6 max-w-7xl mx-auto">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+            <div>
+                <button onclick="switchView('categories-view')" class="text-xs font-bold text-blue-600 hover:text-blue-700 transition uppercase tracking-wider mb-2 flex items-center gap-1">
+                    ← Back to Departments
+                </button>
+                <h1 class="text-4xl font-bold text-slate-900 mb-1">Furniture Showroom</h1>
+                <p class="text-slate-600">Select an item to interact in full 3D and project directly onto your floor workspace.</p>
+            </div>
+            <div>
+                <button onclick="addNewCard()" class="admin-controls bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-bold shadow-sm hover:bg-blue-700 whitespace-nowrap">
+                    + Add New Scan
+                </button>
+            </div>
+        </div>
+        
+        <div id="model-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6"></div>
+    </section>
+
+    <div id="viewer-overlay" class="flex-col md:flex-row">
+        <button onclick="closeViewer()" class="close-viewer-btn text-slate-900">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+
+        <div id="viewer-frame" class="w-full md:w-2/3 h-[55vh] md:h-full bg-slate-50 relative flex items-center justify-center order-1">
+            <div class="absolute inset-0 flex items-center justify-between px-4 z-50 pointer-events-none">
+                <button onclick="changeModel(-1)" class="nav-btn pointer-events-auto bg-white/90 backdrop-blur-md p-3 rounded-full shadow-lg text-slate-900 border border-slate-200">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"></path></svg>
+                </button>
+                <button onclick="changeModel(1)" class="nav-btn pointer-events-auto bg-white/90 backdrop-blur-md p-3 rounded-full shadow-lg text-slate-900 border border-slate-200">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M9 5l6 6-6 6"></path></svg>
+                </button>
+            </div>
+            <div id="loading-ui" class="absolute inset-0 flex flex-col items-center justify-center z-40 bg-slate-50">
+                <div class="loader mb-4"></div>
+                <p class="text-slate-500 font-medium tracking-wide">Optimizing Asset...</p>
+            </div>
+        </div>
+
+        <div id="sidebar-info" class="w-full md:w-1/3 p-8 md:p-12 flex flex-col justify-center bg-white order-2 border-t md:border-t-0 md:border-l border-slate-200">
+            <div class="text-xs font-bold text-blue-600 mb-2 uppercase tracking-wider">Digital Twin</div>
+            <h2 id="sidebar-title" class="text-3xl font-bold text-slate-900 mb-4">Model Title</h2>
+            <p id="sidebar-desc" class="text-slate-600 leading-relaxed mb-8">Model Description</p>
+            <div class="p-5 bg-slate-50 rounded-xl border border-slate-100">
+                <p class="text-xs text-slate-500 font-bold mb-2 uppercase tracking-wider">Interaction Guide</p>
+                <ul class="text-sm text-slate-600 space-y-1">
+                    <li>• <b>Desktop:</b> Drag to rotate. Scroll to zoom.</li>
+                    <li>• <b>Mobile:</b> Swipe to rotate. Pinch to zoom.</li>
+                    <li>• <b>AR:</b> Tap the blue button on your smartphone.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+<script type="module">
+    document.documentElement.style.setProperty('color-scheme', 'light');
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
+        authDomain: "shot47-database.firebaseapp.com",
+        projectId: "shot47-database",
+        storageBucket: "shot47-database.firebasestorage.app",
+        messagingSenderId: "77237094269",
+        appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const categoryName = "furniture_models"; 
+    
+    let modelsData = [];
+    let currentModelIndex = 0;
+
+    // --- VIEW CONTROLLER ---
+    window.switchView = function(viewId) {
+        document.querySelectorAll('.view-section').forEach(section => {
+            section.classList.remove('active-view');
+        });
+        document.getElementById(viewId).classList.add('active-view');
+    };
+
+    // --- NAVIGATION & VIEWER LOGIC ---
+    function ensureViewerExists() {
+        let viewer = document.getElementById('main-viewer');
+        const viewerContainer = document.getElementById('viewer-frame');
+        
+        if (!viewer) {
+            viewer = document.createElement('model-viewer');
+            viewer.id = 'main-viewer';
+            viewer.className = 'w-full h-full';
+            viewer.setAttribute('loading', 'eager');
+            viewer.setAttribute('ar', '');
+            viewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+            viewer.setAttribute('camera-controls', '');
+            viewer.setAttribute('shadow-intensity', '0.6');
+            viewer.setAttribute('environment-image', 'neutral');
+            viewer.setAttribute('max-camera-orbit', 'auto 75deg auto');
+
+            const arButton = document.createElement('button');
+            arButton.slot = 'ar-button';
+            arButton.className = 'absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-xl z-50';
+            arButton.innerText = 'View in AR Space';
+            viewer.appendChild(arButton);
+            
+            viewerContainer.appendChild(viewer);
+        }
+        return viewer;
+    }
+
+    window.openViewer = function(index) {
+        currentModelIndex = index;
+        const overlay = document.getElementById('viewer-overlay');
+        overlay.classList.add('active');
+        document.body.classList.add('modal-open');
+        updateActiveModel();
+    };
+
+    function updateActiveModel() {
+        const model = modelsData[currentModelIndex];
+        const loader = document.getElementById('loading-ui');
+        const viewer = ensureViewerExists();
+        
+        document.getElementById('sidebar-title').innerText = model.title;
+        document.getElementById('sidebar-desc').innerText = model.desc;
+        loader.style.display = 'flex';
+
+        const gl = viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl') || 
+                   viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2');
+        if (gl) {
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+            gl.finish(); 
+        }
+
+        const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
+        viewer.src = proxyBase + model.glb;
+        viewer.iosSrc = proxyBase + model.usdz;
+
+        viewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
+    }
+
+    window.changeModel = function(direction) {
+        let newIndex = currentModelIndex + direction;
+        if (newIndex >= modelsData.length) newIndex = 0;
+        if (newIndex < 0) newIndex = modelsData.length - 1;
+        currentModelIndex = newIndex;
+        updateActiveModel();
+    };
+
+    window.closeViewer = function() {
+        document.getElementById('viewer-overlay').classList.remove('active');
+        const viewer = document.getElementById('main-viewer');
+        if(viewer) {
+            const gl = viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl') || 
+                       viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2');
+            if (gl) gl.getExtension('WEBGL_lose_context')?.loseContext();
+            if (typeof viewer.dispose === 'function') viewer.dispose();
+            viewer.src = ''; viewer.iosSrc = ''; viewer.remove();
+        }
+        document.body.classList.remove('modal-open');
+    };
+
+    // --- FIREBASE LOGIC ---
+    window.toggleAdmin = async function() {
+        if(document.body.classList.contains('admin-mode')) { await signOut(auth); return; }
+        const email = prompt("Admin Email:");
+        const pass = prompt("Admin Password:");
+        if(email && pass) {
+            try { await signInWithEmailAndPassword(auth, email, pass); } catch (e) { alert("Login Failed"); }
+        }
+    };
+
+    window.addNewCard = async function() {
+        const title = prompt("Scan Title:"); if(!title) return;
+        const desc = prompt("Description:");
+        const glb = prompt("GLB ID:");
+        const usdz = prompt("USDZ ID:");
+        try {
+            await addDoc(collection(db, categoryName), {
+                title, desc, glb, usdz,
+                img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80",
+                createdAt: new Date()
+            });
+            loadFromDatabase();
+        } catch (e) { alert("Error"); }
+    };
+
+    window.deleteCard = async function(db_id) {
+        if(confirm("Delete?")) { await deleteDoc(doc(db, categoryName, db_id)); loadFromDatabase(); }
+    };
+
+    async function loadFromDatabase() {
+        const grid = document.getElementById('model-grid');
+        grid.innerHTML = '<p class="text-center col-span-full py-10 text-slate-400">Loading catalog...</p>';
+        try {
+            const querySnapshot = await getDocs(collection(db, categoryName));
+            modelsData = [];
+            querySnapshot.forEach((doc) => { modelsData.push({ db_id: doc.id, ...doc.data() }); });
+            renderGrid();
+        } catch (e) { console.error(e); }
+    }
+
+    function renderGrid() {
+        const grid = document.getElementById('model-grid');
+        grid.innerHTML = '';
+        modelsData.forEach((model, index) => {
+            const cardHTML = `
+            <div class="group bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition duration-300">
+                <div class="w-full aspect-[4/3] bg-slate-50 overflow-hidden relative border-b border-slate-100 cursor-pointer" onclick="openViewer(${index})">
+                    <img src="${model.img}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
+                </div>
+                <div class="p-4 flex-1 flex flex-col justify-between">
+                    <div class="cursor-pointer" onclick="openViewer(${index})">
+                        <h3 class="font-bold text-slate-900 text-sm md:text-base tracking-tight leading-snug group-hover:text-blue-600 transition mb-1 uppercase">${model.title}</h3>
+                        <p class="text-xs text-slate-500 line-clamp-2 leading-relaxed">${model.desc}</p>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <span class="text-[11px] font-bold tracking-wider text-slate-400 uppercase">Interactive 3D</span>
+                        <div class="flex items-center gap-1">
+                            <button onclick="deleteCard('${model.db_id}')" class="admin-controls text-red-500 p-1 hover:text-red-700 transition mr-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                            <span onclick="openViewer(${index})" class="text-blue-600 text-xs font-semibold cursor-pointer flex items-center gap-0.5 group-hover:translate-x-0.5 transition duration-300">View →</span>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+            grid.insertAdjacentHTML('beforeend', cardHTML);
+        });
+    }
+
+    onAuthStateChanged(auth, (user) => {
+        if (user) document.body.classList.add('admin-mode');
+        else document.body.classList.remove('admin-mode');
+    });
+
+    loadFromDatabase();
+</script>
+</body>
+</html>
