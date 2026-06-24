@@ -302,16 +302,25 @@
     window.addNewCard = async function() {
         const title = prompt("Scan Title:"); if(!title) return;
         const desc = prompt("Description:");
+        const imgId = prompt("Google Drive IMAGE ID (Placeholder/Thumbnail):"); // New prompt
         const glb = prompt("GLB ID:");
         const usdz = prompt("USDZ ID:");
+        
+        // Using your existing worker proxy to serve the image securely
+        const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
+        const finalImgUrl = imgId ? (proxyBase + imgId) : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80";
+
         try {
             await addDoc(collection(db, categoryName), {
-                title, desc, glb, usdz,
-                img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80",
+                title, 
+                desc, 
+                img: finalImgUrl, // Saves the proxied Google Drive image link
+                glb, 
+                usdz,
                 createdAt: new Date()
             });
             loadFromDatabase();
-        } catch (e) { alert("Error"); }
+        } catch (e) { alert("Error adding document"); }
     };
 
     window.deleteCard = async function(db_id) {
@@ -336,7 +345,7 @@
             const cardHTML = `
             <div class="group bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition duration-300">
                 <div class="w-full aspect-[4/3] bg-slate-50 overflow-hidden relative border-b border-slate-100 cursor-pointer" onclick="openViewer(${index})">
-                    <img src="${model.img}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
+                    <img src="${model.img}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" alt="${model.title}">
                 </div>
                 <div class="p-4 flex-1 flex flex-col justify-between">
                     <div class="cursor-pointer" onclick="openViewer(${index})">
