@@ -334,10 +334,22 @@
         const grid = document.getElementById('model-grid');
         grid.innerHTML = '';
         modelsData.forEach((model, index) => {
+            
+            // --- ADD THIS SAFETY CHECK BELOW ---
+            let displayImageUrl = model.img;
+            const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
+            
+            // If the database image string is just a raw alphanumeric ID, attach the proxy prefix
+            if (model.img && !model.img.startsWith('http://') && !model.img.startsWith('https://')) {
+                displayImageUrl = proxyBase + model.img;
+            }
+            // -----------------------------------
+
             const cardHTML = `
             <div class="group bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition duration-300">
                 <div class="w-full aspect-[4/3] bg-slate-50 overflow-hidden relative border-b border-slate-100 cursor-pointer" onclick="openViewer(${index})">
-                    <img src="${model.img}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
+                    <!-- Changed model.img to displayImageUrl variable -->
+                    <img src="${displayImageUrl}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" alt="${model.title}" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80'">
                 </div>
                 <div class="p-4 flex-1 flex flex-col justify-between">
                     <div class="cursor-pointer" onclick="openViewer(${index})">
