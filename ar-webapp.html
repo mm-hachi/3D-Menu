@@ -1,119 +1,164 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>fortyseven.co.za - AR Carpet Preview</title>
+    <title>Shot 47 | Pro Depth AR Real-Time Occlusion</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #000;
-            font-family: sans-serif;
-        }
-        #info {
-            position: absolute;
-            top: 10px;
-            width: 100%;
-            text-align: center;
-            color: white;
-            z-index: 100;
-            pointer-events: none;
-        }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
+        canvas { display: block; w-full h-full; }
+        .ui-element { z-index: 100; pointer-events: auto; }
     </style>
 </head>
 <body>
-    <div id="info">WebXR Depth Sensing Application<br/>Point device at floor</div>
 
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-            }
-        }
-    </script>
+    <div id="ar-loading-screen" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 text-white z-50 p-6 text-center">
+        <div class="w-12 h-12 border-4 border-slate-800 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+        <h1 class="text-xl font-bold uppercase tracking-wider mb-2">Initializing Pro Depth AR</h1>
+        <p class="text-xs text-slate-400 max-w-xs leading-relaxed">
+            Preparing spatial tracking parameters. Move your device slowly to scan your environment floors and furniture shapes.
+        </p>
+    </div>
+
+    <div class="absolute top-0 inset-x-0 p-4 flex justify-between items-center pointer-events-none ui-element">
+        <button onclick="exitARSession()" class="bg-white/90 backdrop-blur-md text-slate-900 px-4 py-2 rounded-full text-xs font-bold shadow-lg border border-slate-200">
+            ← Exit Experience
+        </button>
+        <span class="bg-slate-900/80 backdrop-blur-md text-white text-[10px] font-bold tracking-widest px-3 py-1.5 rounded-full uppercase">
+            Depth Occlusion Active
+        </span>
+    </div>
 
     <script type="module">
-        import * as THREE from 'three';
-        import { ARButton } from 'three/addons/webxr/ARButton.js';
+        let xrSession = null;
+        let renderer = null;
+        let scene = null;
+        let camera = null;
+        let currentModel = null;
+        let hitTestSource = null;
+        let localSpace = null;
 
-        let container;
-        let camera, scene, renderer;
-        let controller;
+        // 1. Extract the GLB Model ID passed from your showroom link parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const modelId = urlParams.get('id');
+        const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
 
-        init();
-        animate();
+        if (!modelId) {
+            alert("No carpet asset model link specified.");
+            window.location.href = "/carpets-showroom";
+        }
 
-        function init() {
-            container = document.createElement('div');
-            document.body.appendChild(container);
+        async function initWebXR() {
+            // Check if user's device browser engine natively supports spatial depth features
+            if ( 'xr' in navigator ) {
+                const isSupported = await navigator.xr.isSessionSupported( 'immersive-ar' );
+                if (!isSupported) {
+                    alert("Your device doesn't support immersive AR tracking profiles.");
+                    window.location.href = "/carpets-showroom";
+                    return;
+                }
+                startARSession();
+            } else {
+                alert("WebXR API interfaces not detected on this browser application.");
+                window.location.href = "/carpets-showroom";
+            }
+        }
 
-            // 1. Setup Scene & Camera
+        async function startARSession() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
-            // 2. Setup Lighting
-            const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3);
-            light.position.set(0.5, 1, 0.25);
-            scene.add(light);
+            // Lighting tailored to highlight fabric textures accurately
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(0, 5, 2);
+            scene.add(directionalLight);
 
-            // 3. Setup Renderer for WebXR
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.xr.enabled = true; // Crucial for AR
-            container.appendChild(renderer.domElement);
+            renderer.xr.enabled = true;
+            document.body.appendChild(renderer.domElement);
 
-            // 4. Configure AR Session with Depth Sensing
-            // This is the critical part that prevents your carpet from rendering over real objects.
-            const arButton = ARButton.createButton(renderer, {
-                requiredFeatures: ['depth-sensing'],
+            // CRITICAL: Request explicit hardware depth-sensing arrays alongside the AR pipeline session
+            const sessionOptions = {
+                requiredFeatures: ['hit-test', 'depth-sensing'],
                 depthSensing: {
                     usagePreference: ['cpu-optimized', 'gpu-optimized'],
                     dataFormatPreference: ['luminance-alpha', 'float32']
                 }
+            };
+
+            try {
+                xrSession = await navigator.xr.requestSession('immersive-ar', sessionOptions);
+                renderer.xr.setSession(xrSession);
+                
+                document.getElementById('ar-loading-screen').style.display = 'none';
+                
+                localSpace = await xrSession.requestReferenceSpace('local');
+                const viewerSpace = await xrSession.requestReferenceSpace('viewer');
+                hitTestSource = await xrSession.requestHitTestSource({ space: viewerSpace });
+
+                loadCarpetModel();
+                xrSession.requestAnimationFrame(onXRFrame);
+            } catch (err) {
+                alert("Failed to initialize depth canvas environment: " + err.message);
+                window.location.href = "/carpets-showroom";
+            }
+        }
+
+        function loadCarpetModel() {
+            const loader = new THREE.GLTFLoader();
+            loader.load(proxyBase + modelId, (gltf) => {
+                currentModel = gltf.scene;
+                currentModel.visible = false; // Stay hidden until floor placement plane is verified
+                scene.add(currentModel);
+            }, undefined, (error) => {
+                console.error("Asset download mapping error via proxy pipelines:", error);
             });
-            document.body.appendChild(arButton);
-
-            // 5. Add a Placeholder Carpet
-            // When using depth-sensing, the renderer uses the device's depth map 
-            // to automatically occlude meshes that are "behind" real-world objects.
-            const carpetGeometry = new THREE.PlaneGeometry(1, 1.5); // 1m x 1.5m carpet
-            const carpetMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x8B4513, // SaddleBrown color
-                roughness: 0.8 
-            });
-            
-            const carpet = new THREE.Mesh(carpetGeometry, carpetMaterial);
-            // Rotate the plane to lay flat on the ground
-            carpet.rotation.x = -Math.PI / 2;
-            
-            // Push it slightly down and forward into the scene so it appears on the floor
-            carpet.position.set(0, -0.5, -1.5); 
-            scene.add(carpet);
-
-            // Window Resize Handler
-            window.addEventListener('resize', onWindowResize);
         }
 
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+        function onXRFrame(time, frame) {
+            const session = frame.session;
+            session.requestAnimationFrame(onXRFrame);
 
-        // 6. Render Loop
-        function animate() {
-            renderer.setAnimationLoop(render);
-        }
+            const pose = frame.getViewerPose(localSpace);
+            if (pose && hitTestSource && currentModel && !currentModel.visible) {
+                const hitTestResults = frame.getHitTestResults(hitTestSource);
+                if (hitTestResults.length > 0) {
+                    const hit = hitTestResults[0];
+                    const poseMatrix = hit.getPose(localSpace).transform.matrix;
+                    
+                    // Anchor the virtual carpet tightly onto the physical floor alignment points
+                    currentModel.position.setFromMatrixPosition(new THREE.Matrix4().fromArray(poseMatrix));
+                    currentModel.visible = true;
+                }
+            }
 
-        function render(timestamp, frame) {
-            // If the AR session is active and device supports depth, 
-            // WebXR + Three.js handles the occlusion buffer automatically 
-            // in modern implementations when the feature is requested above.
+            // --- DEPTH OCCLUSION RESOLUTION INTERACTION ---
+            const depthInformation = frame.getDepthInformation(pose.views[0]);
+            if (depthInformation && currentModel) {
+                // Three.js and WebXR automatically map depth buffers to clip models behind closer geometry metrics
+                renderer.xr.setDepthInformation(depthInformation);
+            }
+
             renderer.render(scene, camera);
         }
+
+        window.exitARSession = function() {
+            if (xrSession) {
+                xrSession.end();
+            }
+            window.location.href = "/carpets-showroom";
+        };
+
+        // Fire up initial tracking configurations instantly on access
+        initWebXR();
     </script>
 </body>
 </html>
