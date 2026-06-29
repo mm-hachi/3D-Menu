@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="color-scheme" content="light only">
     <link rel="icon" type="image/png" href="favicon.png">
-    <title>Shot 47 XLVII | Dynamic Showroom</title>
+    <title>47 XLVII | Dynamic Showroom</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -108,7 +108,6 @@
                 <a href="furniture.html" class="text-xs font-bold text-blue-600 hover:text-blue-700 transition uppercase tracking-wider mb-2 inline-flex items-center gap-1">
                     ← Back to Departments
                 </a>
-                <!-- This title changes dynamically based on your categoryName variable below -->
                 <h1 id="showroom-page-title" class="text-4xl font-bold text-slate-900 mb-1">Catalog Showroom</h1>
                 <p class="text-slate-600">Select an item to interact in full 3D and project directly onto your space.</p>
             </div>
@@ -119,11 +118,9 @@
             </div>
         </div>
         
-        <!-- Decofurn Style Responsive Product Grid -->
         <div id="model-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6"></div>
     </section>
 
-    <!-- OVERLAY DETAILED VIEW COMPONENT -->
     <div id="viewer-overlay" class="flex-col md:flex-row">
         <button onclick="closeViewer()" class="close-viewer-btn text-slate-900">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
@@ -132,7 +129,6 @@
             </svg>
         </button>
 
-        <!-- Unobstructed Mobile 3D Frame Viewport -->
         <div id="viewer-frame" class="w-full md:w-2/3 h-[55vh] md:h-full bg-slate-50 relative flex items-center justify-center order-1">
             <div class="absolute inset-0 flex items-center justify-between px-4 z-50 pointer-events-none">
                 <button onclick="changeModel(-1)" class="nav-btn pointer-events-auto bg-white/90 backdrop-blur-md p-3 rounded-full shadow-lg text-slate-900 border border-slate-200">
@@ -148,18 +144,24 @@
             </div>
         </div>
 
-        <!-- Right Side Information Sidebar Panel -->
         <div id="sidebar-info" class="w-full md:w-1/3 p-8 md:p-12 flex flex-col justify-center bg-white order-2 border-t md:border-t-0 md:border-l border-slate-200">
-            <div class="flex items-center justify-between gap-4 mb-2">
+            <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-4">
                 <div class="text-xs font-bold text-blue-600 uppercase tracking-wider">Digital Twin</div>
                 
-                <!-- Immersive AR Deployment Button Placement -->
-                <button onclick="triggerAR()" class="bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold px-3.5 py-1.5 rounded-full shadow-sm flex items-center gap-1.5 transition">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                    </svg>
-                    View in AR Space
-                </button>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="triggerAR()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold px-3.5 py-1.5 rounded-full shadow-sm flex items-center gap-1.5 transition border border-slate-200">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                        </svg>
+                        Standard AR
+                    </button>
+                    <button onclick="triggerCustomAR()" class="bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold px-3.5 py-1.5 rounded-full shadow-sm flex items-center gap-1.5 transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                        </svg>
+                        Pro Depth AR
+                    </button>
+                </div>
             </div>
 
             <h2 id="sidebar-title" class="text-3xl font-bold text-slate-900 mb-4">Model Title</h2>
@@ -169,7 +171,8 @@
                 <ul class="text-sm text-slate-600 space-y-1">
                     <li>• <b>Desktop:</b> Drag to rotate. Scroll to zoom.</li>
                     <li>• <b>Mobile:</b> Swipe to rotate. Pinch to zoom.</li>
-                    <li>• <b>AR:</b> Tap the blue button on your smartphone.</li>
+                    <li>• <b>Standard AR:</b> Basic quick projection.</li>
+                    <li>• <b>Pro Depth AR:</b> Advanced carpet occlusion (hides behind furniture).</li>
                 </ul>
             </div>
         </div>
@@ -194,20 +197,14 @@
     const db = getFirestore(app);
     const auth = getAuth(app);
 
-    // =========================================================================
-    // ⚙️ SHOWROOM CONFIGURATION
-    // Change this value depending on what file this is to read separate folders!
-    // =========================================================================
     const categoryName = "carpet_models"; 
     
-    // Set matching human-readable document header text
     const cleanHeaderTitle = categoryName.replace('_', ' ').toUpperCase();
     document.getElementById('showroom-page-title').innerText = cleanHeaderTitle;
 
     let modelsData = [];
     let currentModelIndex = 0;
 
-    // --- NAVIGATION & VIEWER LOGIC ---
     function ensureViewerExists() {
         let viewer = document.getElementById('main-viewer');
         const viewerContainer = document.getElementById('viewer-frame');
@@ -290,6 +287,17 @@
         }
     };
 
+    // --- NEW: CUSTOM WEBXR APP TRIGGER ---
+    window.triggerCustomAR = function() {
+        const model = modelsData[currentModelIndex];
+        if (model && model.glb) {
+            // Opens the new app and passes the GLB ID to it via URL parameter
+            window.open('ar-carpet.html?glb=' + encodeURIComponent(model.glb), '_blank');
+        } else {
+            alert("Model data is still loading or unavailable. Please try again.");
+        }
+    };
+
     // --- FIREBASE LOGIC ---
     window.toggleAdmin = async function() {
         if(document.body.classList.contains('admin-mode')) { await signOut(auth); return; }
@@ -303,11 +311,10 @@
     window.addNewCard = async function() {
         const title = prompt("Scan Title:"); if(!title) return;
         const desc = prompt("Description:");
-        const imgId = prompt("Google Drive IMAGE ID (Placeholder/Thumbnail):"); // New prompt
+        const imgId = prompt("Google Drive IMAGE ID (Placeholder/Thumbnail):"); 
         const glb = prompt("GLB ID:");
         const usdz = prompt("USDZ ID:");
         
-        // Using your existing worker proxy to serve the image securely
         const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
         const finalImgUrl = imgId ? (proxyBase + imgId) : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80";
 
@@ -315,7 +322,7 @@
             await addDoc(collection(db, categoryName), {
                 title, 
                 desc, 
-                img: finalImgUrl, // Saves the proxied Google Drive image link
+                img: finalImgUrl, 
                 glb, 
                 usdz,
                 createdAt: new Date()
@@ -357,23 +364,4 @@
                         <span class="text-[11px] font-bold tracking-wider text-slate-400 uppercase">Interactive 3D</span>
                         <div class="flex items-center gap-1">
                             <button onclick="deleteCard('${model.db_id}')" class="admin-controls text-red-500 p-1 hover:text-red-700 transition mr-1">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                            </button>
-                            <span onclick="openViewer(${index})" class="text-blue-600 text-xs font-semibold cursor-pointer flex items-center gap-0.5 group-hover:translate-x-0.5 transition duration-300">View →</span>
-                        </div>
-                    </div>
-                </div>
-            </div>`;
-            grid.insertAdjacentHTML('beforeend', cardHTML);
-        });
-    }
-
-    onAuthStateChanged(auth, (user) => {
-        if (user) document.body.classList.add('admin-mode');
-        else document.body.classList.remove('admin-mode');
-    });
-
-    loadFromDatabase();
-</script>
-</body>
-</html>
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0
