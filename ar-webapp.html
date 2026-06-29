@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>fortyseven.co.za - AR Carpet Preview</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            z-index: 100;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">WebXR Depth Sensing Application<br/>Point device at floor</div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { ARButton } from 'three/addons/webxr/ARButton.js';
+
+        let container;
+        let camera, scene, renderer;
+        let controller;
+
+        init();
+        animate();
+
+        function init() {
+            container = document.createElement('div');
+            document.body.appendChild(container);
+
+            // 1. Setup Scene & Camera
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+            // 2. Setup Lighting
+            const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3);
+            light.position.set(0.5, 1, 0.25);
+            scene.add(light);
+
+            // 3. Setup Renderer for WebXR
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true; // Crucial for AR
+            container.appendChild(renderer.domElement);
+
+            // 4. Configure AR Session with Depth Sensing
+            // This is the critical part that prevents your carpet from rendering over real objects.
+            const arButton = ARButton.createButton(renderer, {
+                requiredFeatures: ['depth-sensing'],
+                depthSensing: {
+                    usagePreference: ['cpu-optimized', 'gpu-optimized'],
+                    dataFormatPreference: ['luminance-alpha', 'float32']
+                }
+            });
+            document.body.appendChild(arButton);
+
+            // 5. Add a Placeholder Carpet
+            // When using depth-sensing, the renderer uses the device's depth map 
+            // to automatically occlude meshes that are "behind" real-world objects.
+            const carpetGeometry = new THREE.PlaneGeometry(1, 1.5); // 1m x 1.5m carpet
+            const carpetMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x8B4513, // SaddleBrown color
+                roughness: 0.8 
+            });
+            
+            const carpet = new THREE.Mesh(carpetGeometry, carpetMaterial);
+            // Rotate the plane to lay flat on the ground
+            carpet.rotation.x = -Math.PI / 2;
+            
+            // Push it slightly down and forward into the scene so it appears on the floor
+            carpet.position.set(0, -0.5, -1.5); 
+            scene.add(carpet);
+
+            // Window Resize Handler
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // 6. Render Loop
+        function animate() {
+            renderer.setAnimationLoop(render);
+        }
+
+        function render(timestamp, frame) {
+            // If the AR session is active and device supports depth, 
+            // WebXR + Three.js handles the occlusion buffer automatically 
+            // in modern implementations when the feature is requested above.
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
