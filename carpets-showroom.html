@@ -174,6 +174,9 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    
+    // 📦 IMPORT NATIVE FIREBASE STORAGE TOOLS
+    import { getStorage, ref, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
@@ -187,6 +190,9 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth(app);
+    
+    // 🛠️ INITIALIZE STORAGE ENGINE
+    const storage = getStorage(app);
 
     const categoryName = "carpet_models"; 
     
@@ -207,14 +213,14 @@
             viewer.className = 'w-full h-full';
             viewer.setAttribute('loading', 'eager');
             viewer.setAttribute('ar', '');
-            viewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
-
-            // 🌊 FORCES OCCLUSION PLACEMENT LOGIC ON THE FLOOR
-            viewer.setAttribute('ar-placement', 'floor');
             
-            // 🔒 LOCK DETAILS INSIDE ANDROID SPACE (WebXR Environments)
+            // WebXR forced layout order
+            viewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+            viewer.setAttribute('ar-placement', 'floor');
+
+            // Lock rules
             viewer.setAttribute('ar-scale', 'fixed');
-            //viewer.setAttribute('disable-zoom', '');
+            viewer.setAttribute('disable-zoom', '');
             
             viewer.setAttribute('camera-controls', '');
             viewer.setAttribute('shadow-intensity', '0.6');
@@ -234,7 +240,8 @@
         updateActiveModel();
     };
 
-    function updateActiveModel() {
+    // 🚀 DYNAMIC UPDATED MODEL HANDSHAKE PIPELINE
+    async function updateActiveModel() {
         const model = modelsData[currentModelIndex];
         const loader = document.getElementById('loading-ui');
         const viewer = ensureViewerExists();
@@ -250,14 +257,27 @@
             gl.finish(); 
         }
 
-        const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
-        viewer.src = proxyBase + model.glb;
+        /* -------------------------------------------------------------
+           ⏸️ PAUSED OLD CLOUDFLARE WORKER PROXY:
+           const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
+           viewer.src = proxyBase + model.glb;
+           viewer.iosSrc = proxyBase + model.usdz + "#allowsContentScaling=0&occlusion=1";
+           ------------------------------------------------------------- */
 
-        // 🔒 LOCKS SCALE AND 🌊 ENABLES NATIVE OCCLUSION FOR iOS
-        viewer.iosSrc = proxyBase + model.usdz + "#allowsContentScaling=0&occlusion=1";
-        
-        // 🔒 LOCK DETAILS INSIDE iOS SPACE (Appends native asset compression behavior parameters)
-        //viewer.iosSrc = proxyBase + model.usdz + "#allowsContentScaling=0";
+        try {
+            // 🔗 FETCH REAL-TIME ASSET LINK RESOLUTIONS NATIVELY FROM YOUR BLAZE STORAGE BUCKET
+            // This assumes your Firestore contains the simple filename (e.g., "vintage_rug.glb")
+            const glbRef = ref(storage, `models/glb/${model.glb}`);
+            const usdzRef = ref(storage, `models/usdz/${model.usdz}`);
+
+            const glbUrl = await getDownloadURL(glbRef);
+            const usdzUrl = await getDownloadURL(usdzRef);
+
+            viewer.src = glbUrl;
+            viewer.iosSrc = usdzUrl + "#allowsContentScaling=0&occlusion=1";
+        } catch (error) {
+            console.error("Firebase Storage Retrieval Failure:", error);
+        }
 
         viewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
     }
@@ -305,24 +325,30 @@
     window.addNewCard = async function() {
         const title = prompt("Scan Title:"); if(!title) return;
         const desc = prompt("Description:");
-        const imgId = prompt("Google Drive IMAGE ID (Placeholder/Thumbnail):");
-        const glb = prompt("GLB ID:");
-        const usdz = prompt("USDZ ID:");
         
-        const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
-        const finalImgUrl = imgId ? (proxyBase + imgId) : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80";
-
+        // Input fields now take simple filenames (e.g., "rug_01.glb" or "rug_01.jpg")
+        const imgName = prompt("Image Filename in Storage (e.g., product.jpg):");
+        const glbName = prompt("GLB Filename in Storage (e.g., model.glb):");
+        const usdzName = prompt("USDZ Filename in Storage (e.g., model.usdz):");
+        
+        let finalImgUrl = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80";
+        
         try {
+            if (imgName) {
+                const imgRef = ref(storage, `models/thumbnails/${imgName}`);
+                finalImgUrl = await getDownloadURL(imgRef);
+            }
+
             await addDoc(collection(db, categoryName), {
                 title, 
                 desc, 
                 img: finalImgUrl,
-                glb, 
-                usdz,
+                glb: glbName, 
+                usdz: usdzName,
                 createdAt: new Date()
             });
             loadFromDatabase();
-        } catch (e) { alert("Error adding document"); }
+        } catch (e) { alert("Error adding document reference"); }
     };
 
     window.deleteCard = async function(db_id) {
