@@ -30,13 +30,13 @@
 
     <nav class="fixed w-full z-40 top-0 bg-white/80 backdrop-blur-md border-b border-slate-200">
         <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-            <a href="/" class="flex items-center transition hover:opacity-80">
-            <img src="logo.png" alt="Shot 47 Logo" class="h-8 w-auto object-contain">forty seven
+            <a href="/" class="flex items-center transition hover:opacity-80 font-bold gap-2 text-slate-900">
+                <img src="logo.png" alt="Shot 47 Logo" class="h-8 w-auto object-contain">forty seven
             </a>
             <div class="flex items-center gap-6 text-sm font-medium">
-            <a href="/" class="text-blue-600 font-semibold">Showrooms</a>
-            <a href="/about" class="text-slate-600 hover:text-blue-600 transition">About</a>
-        </div>
+                <a href="/" class="text-blue-600 font-semibold">Showrooms</a>
+                <a href="/about" class="text-slate-600 hover:text-blue-600 transition">About</a>
+            </div>
         </div>
     </nav>
 
@@ -50,48 +50,45 @@
     <section class="py-12 px-6 max-w-7xl mx-auto mb-20">
         <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
 
-            <a href="furniture.html" class="hover-lift block bg-white rounded-2xl overflow-hidden border border-slate-200">
-                <div class="h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
+            <a href="furniture.html" data-enabled="true" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+                <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
+                <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
                 <div class="p-5">
-                    <h3 class="font-bold text-slate-900 mb-1">Furniture & Decor</h3>
-                    <p class="text-xs text-slate-500">Retail staging and home decor AR.</p>
+                    <h3 class="card-title font-bold text-slate-900 mb-1">Furniture & Decor</h3>
+                    <p class="card-desc text-xs text-slate-500">Retail staging and home decor AR.</p>
                 </div>
             </a>
             
-            <a href="hospitality.html" class="hover-lift block bg-white rounded-2xl overflow-hidden border border-slate-200">
-                <div class="h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
+            <a href="hospitality.html" data-enabled="true" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+                <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
+                <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
                 <div class="p-5">
-                    <h3 class="font-bold text-slate-900 mb-1">Culinary AR Menus</h3>
-                    <p class="text-xs text-slate-500">Table-side photorealistic food assets.</p>
+                    <h3 class="card-title font-bold text-slate-900 mb-1">Culinary AR Menus</h3>
+                    <p class="card-desc text-xs text-slate-500">Table-side photorealistic food assets.</p>
                 </div>
             </a>
             
-            <div class="relative bg-white rounded-2xl overflow-hidden border border-slate-200 opacity-50 cursor-not-allowed select-none">
-                <span class="absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                    Coming Soon
-                </span>
-                <div class="h-40 bg-slate-200 grayscale"><img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
+            <a href="industrial.html" data-enabled="false" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+                <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
+                <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
                 <div class="p-5">
-                    <h3 class="font-bold text-slate-400 mb-1">Industrial Equipment</h3>
-                    <p class="text-xs text-slate-400">Heavy machinery and engineering scans.</p>
+                    <h3 class="card-title font-bold text-slate-900 mb-1">Industrial Equipment</h3>
+                    <p class="card-desc text-xs text-slate-500">Heavy machinery and engineering scans.</p>
                 </div>
-            </div>
+            </a>
 
-            <div class="relative bg-white rounded-2xl overflow-hidden border border-slate-200 opacity-50 cursor-not-allowed select-none">
-                <span class="absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                    Coming Soon
-                </span>
-                <div class="h-40 bg-slate-200 grayscale"><img src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
+            <a href="architecture.html" data-enabled="false" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+                <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
+                <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
                 <div class="p-5">
-                    <h3 class="font-bold text-slate-400 mb-1">Architecture</h3>
-                    <p class="text-xs text-slate-400">Spatial captures and exterior digital twins.</p>
+                    <h3 class="card-title font-bold text-slate-900 mb-1">Architecture</h3>
+                    <p class="card-desc text-xs text-slate-500">Spatial captures and exterior digital twins.</p>
                 </div>
-            </div>
+            </a>
 
         </div>
     </section>
 
-    <!-- FOOTER -->
     <footer class="w-full bg-white border-t border-slate-200 py-6 px-6">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 font-medium">
             <p>© 2026 XLVII 47. All rights reserved.</p>
@@ -102,5 +99,40 @@
         </div>
     </footer>
 
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            document.querySelectorAll(".showroom-card").forEach(card => {
+                const isEnabled = card.getAttribute("data-enabled") === "true";
+                
+                if (isEnabled) {
+                    // Make it fully operational and responsive to hover actions
+                    card.classList.add("hover-lift", "cursor-pointer");
+                    card.classList.remove("opacity-50", "cursor-not-allowed", "select-none");
+                    card.querySelector(".badge").classList.add("hidden");
+                    card.querySelector(".image-container").classList.remove("grayscale");
+                    
+                    // Restore natural color matching values to text properties
+                    card.querySelector(".card-title").className = "card-title font-bold text-slate-900 mb-1";
+                    card.querySelector(".card-desc").className = "card-desc text-xs text-slate-500";
+                } else {
+                    // Statically lock layout down and fade component visual properties out
+                    card.classList.remove("hover-lift", "cursor-pointer");
+                    card.classList.add("opacity-50", "cursor-not-allowed", "select-none");
+                    card.querySelector(".badge").classList.remove("hidden");
+                    card.querySelector(".image-container").classList.add("grayscale");
+                    
+                    // Apply grayed out style values to typography tags
+                    card.querySelector(".card-title").className = "card-title font-bold text-slate-400 mb-1";
+                    card.querySelector(".card-desc").className = "card-desc text-xs text-slate-400";
+                    
+                    // Permanently block redirection anchor pathways on mouse interactions
+                    card.addEventListener("click", (e) => {
+                        e.preventDefault();
+                        return false;
+                    });
+                }
+            });
+        });
+    </script>
 </body>
 </html>
