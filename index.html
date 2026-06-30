@@ -28,17 +28,16 @@
 </head>
 <body class="antialiased pt-0 transition-all duration-300" id="main-body">
 
-    <!-- HIDDEN ADMIN DASHBOARD TOOLBAR -->
     <div id="admin-panel" class="fixed top-0 inset-x-0 h-16 bg-slate-900 border-b border-slate-800 text-white z-50 flex items-center justify-between px-6 transform -translate-y-full transition-transform duration-300 shadow-xl">
         <div class="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-400 uppercase">
             <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            Showroom Direct Console
+            Live Cloud Console
         </div>
         <div class="flex flex-wrap items-center gap-3">
-            <button onclick="toggleCardState('furniture')" id="toggle-btn-furniture" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors"></button>
-            <button onclick="toggleCardState('hospitality')" id="toggle-btn-hospitality" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors"></button>
-            <button onclick="toggleCardState('industrial')" id="toggle-btn-industrial" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors"></button>
-            <button onclick="toggleCardState('architecture')" id="toggle-btn-architecture" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors"></button>
+            <button onclick="toggleCardState('furniture')" id="toggle-btn-furniture" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors">Loading...</button>
+            <button onclick="toggleCardState('hospitality')" id="toggle-btn-hospitality" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors">Loading...</button>
+            <button onclick="toggleCardState('industrial')" id="toggle-btn-industrial" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors">Loading...</button>
+            <button onclick="toggleCardState('architecture')" id="toggle-btn-architecture" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors">Loading...</button>
         </div>
         <button onclick="exitAdminMode()" class="text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-2.5 py-1 rounded transition">Exit</button>
     </div>
@@ -63,10 +62,12 @@
     </section>
 
     <section class="py-12 px-6 max-w-7xl mx-auto mb-20">
-        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div id="initial-cloud-loader" class="text-center py-20 text-sm text-slate-400 font-medium">
+            Syncing live showroom states from cloud...
+        </div>
 
-            <!-- Card 1: Furniture & Decor -->
-            <a href="furniture.html" id="card-furniture" data-enabled="true" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+        <div id="showroom-grid" class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 opacity-0 transition-opacity duration-300">
+            <a href="furniture.html" id="card-furniture" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
                 <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
                 <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
                 <div class="p-5">
@@ -75,8 +76,7 @@
                 </div>
             </a>
             
-            <!-- Card 2: Culinary AR Menus -->
-            <a href="hospitality.html" id="card-hospitality" data-enabled="true" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+            <a href="hospitality.html" id="card-hospitality" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
                 <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
                 <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
                 <div class="p-5">
@@ -85,8 +85,7 @@
                 </div>
             </a>
             
-            <!-- Card 3: Industrial Equipment -->
-            <a href="industrial.html" id="card-industrial" data-enabled="false" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+            <a href="industrial.html" id="card-industrial" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
                 <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
                 <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
                 <div class="p-5">
@@ -95,8 +94,7 @@
                 </div>
             </a>
 
-            <!-- Card 4: Architecture -->
-            <a href="architecture.html" id="card-architecture" data-enabled="false" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+            <a href="architecture.html" id="card-architecture" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
                 <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
                 <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
                 <div class="p-5">
@@ -104,14 +102,11 @@
                     <p class="card-desc text-xs text-slate-500">Spatial captures and exterior digital twins.</p>
                 </div>
             </a>
-
         </div>
     </section>
 
-    <!-- FOOTER -->
     <footer class="w-full bg-white border-t border-slate-200 py-6 px-6">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 font-medium">
-            <!-- 🔐 ONDBLCLICK TRIGGER ADDED HERE -->
             <p id="copyright-trigger" class="cursor-pointer select-none active:text-slate-600 transition" ondblclick="enterAdminConsole()">© 2026 XLVII 47. All rights reserved.</p>
             <div class="flex gap-4">
                 <a href="/" class="hover:text-slate-600 transition">Showrooms</a>
@@ -120,23 +115,33 @@
         </div>
     </footer>
 
-    <!-- INTERACTIVE CONTROL SCRIPT -->
-    <script>
-        // Change this string to whatever custom passphrase you want to lock it with
-        const ADMIN_SECRET = "4747"; 
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // Safely intercept clicks on cards when disabled
-        function handleIntercept(e) {
-            e.preventDefault();
-            return false;
-        }
+        const firebaseConfig = {
+            apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
+            authDomain: "shot47-database.firebaseapp.com",
+            projectId: "shot47-database",
+            storageBucket: "shot47-database.firebasestorage.app",
+            messagingSenderId: "77237094269",
+            appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
+        };
 
-        // Refreshes the visual rendering across your card selections
-        function updateShowroomUI() {
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        const ADMIN_SECRET = "4747";
+        let liveStates = {};
+
+        function handleIntercept(e) { e.preventDefault(); return false; }
+
+        // Core Renderer: Drives card appearance based on cloud configuration data models
+        function renderShowrooms() {
             document.querySelectorAll(".showroom-card").forEach(card => {
-                const isEnabled = card.getAttribute("data-enabled") === "true";
                 const id = card.id.replace('card-', '');
-                
+                const isEnabled = liveStates[id] !== false; // Default to true if not explicitly set to false
+
                 if (isEnabled) {
                     card.classList.add("hover-lift", "cursor-pointer");
                     card.classList.remove("opacity-50", "cursor-not-allowed", "select-none");
@@ -155,10 +160,10 @@
                     card.addEventListener("click", handleIntercept);
                 }
 
-                // Keep the toolbar buttons matching current values
+                // Synchronize console toggle key button frames dynamically
                 const btn = document.getElementById(`toggle-btn-${id}`);
-                if(btn) {
-                    if(isEnabled) {
+                if (btn) {
+                    if (isEnabled) {
                         btn.innerText = `Disable ${id.charAt(0).toUpperCase() + id.slice(1)}`;
                         btn.className = "text-xs font-bold px-3 py-1.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors";
                     } else {
@@ -169,37 +174,65 @@
             });
         }
 
-        // Admin Prompt Routine triggered on footer double click
+        // 🔥 THE MAGIC FIX: Establishes a permanent live listener on the database document map container
+        onSnapshot(doc(db, "site_control", "showrooms"), (docSnap) => {
+            if (docSnap.exists()) {
+                liveStates = docSnap.data();
+            }
+            
+            // Remove full-screen masking covers once the first cloud query returns values
+            document.getElementById("initial-cloud-loader").classList.add("hidden");
+            const grid = document.getElementById("showroom-grid");
+            grid.classList.remove("opacity-0");
+            
+            renderShowrooms();
+        }, (error) => {
+            console.error("Firestore Listen Failed: ", error);
+        });
+
+        // Mutates fields inside the cloud document instantly upon execution
+        window.toggleCardState = async function(cardId) {
+            const currentVal = liveStates[cardId] !== false;
+            const docRef = doc(db, "site_control", "showrooms");
+            
+            try {
+                await updateDoc(docRef, {
+                    [cardId]: !currentVal
+                });
+            } catch (err) {
+                alert("Error syncing updating document properties: " + err.message);
+            }
+        };
+
+        // --- Console Presentation Logic ---
         window.enterAdminConsole = function() {
             const accessKey = prompt("Enter Showroom Security Passcode:");
             if (accessKey === ADMIN_SECRET) {
-                document.getElementById("admin-panel").classList.remove("-translate-y-full");
-                document.getElementById("main-body").classList.add("pt-16");
-                document.getElementById("main-nav").classList.add("top-16");
-                updateShowroomUI();
+                sessionStorage.setItem("admin-session", "active");
+                showAdminBar();
             } else if (accessKey !== null) {
                 alert("Access Denied.");
             }
         };
 
+        function showAdminBar() {
+            document.getElementById("admin-panel").classList.remove("-translate-y-full");
+            document.getElementById("main-body").classList.add("pt-16");
+            document.getElementById("main-nav").classList.add("top-16");
+            renderShowrooms();
+        }
+
         window.exitAdminMode = function() {
+            sessionStorage.removeItem("admin-session");
             document.getElementById("admin-panel").classList.add("-translate-y-full");
             document.getElementById("main-body").classList.remove("pt-16");
             document.getElementById("main-nav").classList.remove("top-16");
         };
 
-        // Real-time button toggle action routine
-        window.toggleCardState = function(cardId) {
-            const card = document.getElementById(`card-${cardId}`);
-            if(card) {
-                const currentVal = card.getAttribute("data-enabled") === "true";
-                card.setAttribute("data-enabled", (!currentVal).toString());
-                updateShowroomUI();
-            }
-        };
-
-        // Initialize state engine mappings on system launch
-        document.addEventListener("DOMContentLoaded", updateShowroomUI);
+        // Recheck admin display configurations on page loading parameters
+        if (sessionStorage.getItem("admin-session") === "active") {
+            showAdminBar();
+        }
     </script>
 </body>
 </html>
