@@ -214,11 +214,11 @@
             viewer.setAttribute('loading', 'eager');
             viewer.setAttribute('ar', '');
             
-            // WebXR forced layout order
+            // WebXR inline depth configuration forced to the front to unlock occlusion maps
             viewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
             viewer.setAttribute('ar-placement', 'floor');
 
-            // Lock rules
+            // Explicit scale locking locks dimensions 1:1 in place
             viewer.setAttribute('ar-scale', 'fixed');
             viewer.setAttribute('disable-zoom', '');
             
@@ -279,6 +279,15 @@
         viewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
     }
 
+    // 🔒 RESTORED GLOBAL ACCESS ROUTE TO ARROW NAV CONTROLS
+    window.changeModel = function(direction) {
+        let newIndex = currentModelIndex + direction;
+        if (newIndex >= modelsData.length) newIndex = 0;
+        if (newIndex < 0) newIndex = modelsData.length - 1;
+        currentModelIndex = newIndex;
+        updateActiveModel();
+    };
+
     // 🚀 FIXED: Thoroughly wipes memory clean when the user closes the overlay panel
     window.closeViewer = function() {
         document.getElementById('viewer-overlay').classList.remove('active');
@@ -302,6 +311,7 @@
         }
         document.body.classList.remove('modal-open');
     };
+
     window.triggerAR = function() {
         const viewer = document.getElementById('main-viewer');
         if (viewer && typeof viewer.activateAR === 'function') {
