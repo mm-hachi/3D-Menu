@@ -240,33 +240,30 @@
         updateActiveModel();
     };
 
-    // 🚀 DYNAMIC UPDATED MODEL HANDSHAKE PIPELINE
+    // 🚀 FIXED: Aggressively cleans old contexts before spinning up a new asset link
     async function updateActiveModel() {
         const model = modelsData[currentModelIndex];
         const loader = document.getElementById('loading-ui');
+        
+        // 1. Force close and dismantle any existing viewer instance BEFORE building the new one
+        const oldViewer = document.getElementById('main-viewer');
+        if (oldViewer) {
+            const gl = oldViewer.shadowRoot?.querySelector('canvas')?.getContext('webgl') || 
+                       oldViewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2');
+            if (gl) gl.getExtension('WEBGL_lose_context')?.loseContext();
+            if (typeof oldViewer.dispose === 'function') oldViewer.dispose();
+            oldViewer.src = ''; 
+            oldViewer.iosSrc = ''; 
+            oldViewer.remove();
+        }
+
         const viewer = ensureViewerExists();
         
         document.getElementById('sidebar-title').innerText = model.title;
         document.getElementById('sidebar-desc').innerText = model.desc;
         loader.style.display = 'flex';
 
-        const gl = viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl') || 
-                   viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2');
-        if (gl) {
-            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
-            gl.finish(); 
-        }
-
-        /* -------------------------------------------------------------
-           ⏸️ PAUSED OLD CLOUDFLARE WORKER PROXY:
-           const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
-           viewer.src = proxyBase + model.glb;
-           viewer.iosSrc = proxyBase + model.usdz + "#allowsContentScaling=0&occlusion=1";
-           ------------------------------------------------------------- */
-
         try {
-            // 🔗 FETCH REAL-TIME ASSET LINK RESOLUTIONS NATIVELY FROM YOUR BLAZE STORAGE BUCKET
-            // This assumes your Firestore contains the simple filename (e.g., "vintage_rug.glb")
             const glbRef = ref(storage, `models/glb/${model.glb}`);
             const usdzRef = ref(storage, `models/usdz/${model.usdz}`);
 
@@ -282,27 +279,29 @@
         viewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
     }
 
-    window.changeModel = function(direction) {
-        let newIndex = currentModelIndex + direction;
-        if (newIndex >= modelsData.length) newIndex = 0;
-        if (newIndex < 0) newIndex = modelsData.length - 1;
-        currentModelIndex = newIndex;
-        updateActiveModel();
-    };
-
+    // 🚀 FIXED: Thoroughly wipes memory clean when the user closes the overlay panel
     window.closeViewer = function() {
         document.getElementById('viewer-overlay').classList.remove('active');
         const viewer = document.getElementById('main-viewer');
         if(viewer) {
             const gl = viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl') || 
                        viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2');
-            if (gl) gl.getExtension('WEBGL_lose_context')?.loseContext();
+            
+            // Explicitly force the hardware to drop the current thread context mapping
+            if (gl) {
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+                gl.finish();
+                gl.getExtension('WEBGL_lose_context')?.loseContext();
+            }
+            
             if (typeof viewer.dispose === 'function') viewer.dispose();
-            viewer.src = ''; viewer.iosSrc = ''; viewer.remove();
+            
+            viewer.src = ''; 
+            viewer.iosSrc = ''; 
+            viewer.remove();
         }
         document.body.classList.remove('modal-open');
     };
-
     window.triggerAR = function() {
         const viewer = document.getElementById('main-viewer');
         if (viewer && typeof viewer.activateAR === 'function') {
