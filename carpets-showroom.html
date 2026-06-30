@@ -208,6 +208,9 @@
             viewer.setAttribute('loading', 'eager');
             viewer.setAttribute('ar', '');
             viewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+
+            // 🌊 FORCES OCCLUSION PLACEMENT LOGIC ON THE FLOOR
+            viewer.setAttribute('ar-placement', 'floor');
             
             // 🔒 LOCK DETAILS INSIDE ANDROID SPACE (WebXR Environments)
             viewer.setAttribute('ar-scale', 'fixed');
@@ -249,9 +252,12 @@
 
         const proxyBase = "https://drive-proxy.mukudzeimorton.workers.dev/?id=";
         viewer.src = proxyBase + model.glb;
+
+        // 🔒 LOCKS SCALE AND 🌊 ENABLES NATIVE OCCLUSION FOR iOS
+        viewer.iosSrc = proxyBase + model.usdz + "#allowsContentScaling=0&occlusion=1";
         
         // 🔒 LOCK DETAILS INSIDE iOS SPACE (Appends native asset compression behavior parameters)
-        viewer.iosSrc = proxyBase + model.usdz + "#allowsContentScaling=0";
+        //viewer.iosSrc = proxyBase + model.usdz + "#allowsContentScaling=0";
 
         viewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
     }
