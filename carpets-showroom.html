@@ -259,4 +259,174 @@
 
         const viewer = ensureViewerExists();
         
-        document.getElementById('sidebar-
+        document.getElementById('sidebar-title').innerText = model.title;
+        document.getElementById('sidebar-desc').innerText = model.desc;
+        loader.style.display = 'flex';
+
+        try {
+            const glbRef = ref(storage, `models/glb/${model.glb}`);
+            const usdzRef = ref(storage, `models/usdz/${model.usdz}`);
+
+            const glbUrl = await getDownloadURL(glbRef);
+            const usdzUrl = await getDownloadURL(usdzRef);
+
+            viewer.src = glbUrl;
+            viewer.iosSrc = usdzUrl + "#allowsContentScaling=0&occlusion=1";
+        } catch (error) {
+            console.error("Firebase Storage Retrieval Failure:", error);
+        }
+
+        viewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
+    }
+
+    // 🔒 RESTORED GLOBAL ACCESS ROUTE TO ARROW NAV CONTROLS
+    window.changeModel = function(direction) {
+        let newIndex = currentModelIndex + direction;
+        if (newIndex >= modelsData.length) newIndex = 0;
+        if (newIndex < 0) newIndex = modelsData.length - 1;
+        currentModelIndex = newIndex;
+        updateActiveModel();
+    };
+
+    // 🚀 FIXED: Thoroughly wipes memory clean when the user closes the overlay panel
+    window.closeViewer = function() {
+        document.getElementById('viewer-overlay').classList.remove('active');
+        const viewer = document.getElementById('main-viewer');
+        if(viewer) {
+            const gl = viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl') || 
+                       viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2');
+            
+            // Explicitly force the hardware to drop the current thread context mapping
+            if (gl) {
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+                gl.finish();
+                gl.getExtension('WEBGL_lose_context')?.loseContext();
+            }
+            
+            if (typeof viewer.dispose === 'function') viewer.dispose();
+            
+            viewer.src = ''; 
+            viewer.iosSrc = ''; 
+            viewer.remove();
+        }
+        document.body.classList.remove('modal-open');
+    };
+
+    window.triggerAR = function() {
+        const viewer = document.getElementById('main-viewer');
+        if (viewer && typeof viewer.activateAR === 'function') {
+            viewer.activateAR();
+        } else {
+            alert("The 3D engine is preparing your workspace scene context. Try again in a moment.");
+        }
+    };
+
+    // --- FIREBASE LOGIC ---
+    window.toggleAdmin = async function() {
+        if(document.body.classList.contains('admin-mode')) { await signOut(auth); return; }
+        const email = prompt("Admin Email:");
+        const pass = prompt("Admin Password:");
+        if(email && pass) {
+            try { await signInWithEmailAndPassword(auth, email, pass); } catch (e) { alert("Login Failed"); }
+        }
+    };
+
+    window.addNewCard = async function() {
+        const title = prompt("Scan Title:"); if(!title) return;
+        const desc = prompt("Description:");
+        
+        // Simplicity: Input plain filename paths directly (e.g., "Turkish-Carpet-7.jpg")
+        const imgName = prompt("Image Filename in Storage (e.g., product.jpg):");
+        const glbName = prompt("GLB Filename in Storage (e.g., model.glb):");
+        const usdzName = prompt("USDZ Filename in Storage (e.g., model.usdz):");
+        
+        try {
+            await addDoc(collection(db, categoryName), {
+                title, 
+                desc, 
+                img: imgName, // Stores the clean string name directly in Firestore
+                glb: glbName, 
+                usdz: usdzName,
+                createdAt: new Date()
+            });
+            loadFromDatabase();
+        } catch (e) { alert("Error adding document reference"); }
+    };
+
+    window.deleteCard = async function(db_id) {
+        if(confirm("Delete?")) { await deleteDoc(doc(db, categoryName, db_id)); loadFromDatabase(); }
+    };
+
+    async function loadFromDatabase() {
+        const grid = document.getElementById('model-grid');
+        grid.innerHTML = '<p class="text-center col-span-full py-10 text-slate-400">Loading catalog...</p>';
+        try {
+            const querySnapshot = await getDocs(collection(db, categoryName));
+            modelsData = [];
+            querySnapshot.forEach((doc) => { modelsData.push({ db_id: doc.id, ...doc.data() }); });
+            renderGrid();
+        } catch (e) { console.error(e); }
+    }
+
+    function renderGrid() {
+        const grid = document.getElementById('model-grid');
+        grid.innerHTML = '';
+        modelsData.forEach((model, index) => {
+            const imgId = `card-img-${index}`;
+            const cardHTML = `
+            <div class="group bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition duration-300">
+                <div class="w-full aspect-[4/3] bg-slate-50 overflow-hidden relative border-b border-slate-100 cursor-pointer" onclick="openViewer(${index})">
+                    <img id="${imgId}" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100%' height='100%' fill='%23f1f5f9'/></svg>" class="w-full h-full object-cover group-hover:scale-105 transition duration-500 opacity-0" alt="${model.title}">
+                </div>
+                <div class="p-4 flex-1 flex flex-col justify-between">
+                    <div class="cursor-pointer" onclick="openViewer(${index})">
+                        <h3 class="font-bold text-slate-900 text-sm md:text-base tracking-tight leading-snug group-hover:text-blue-600 transition mb-1 uppercase">${model.title}</h3>
+                        <p class="text-xs text-slate-500 line-clamp-2 leading-relaxed">${model.desc}</p>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <span class="text-[11px] font-bold tracking-wider text-slate-400 uppercase">Interactive 3D</span>
+                        <div class="flex items-center gap-1">
+                            <button onclick="deleteCard('${model.db_id}')" class="admin-controls text-red-500 p-1 hover:text-red-700 transition mr-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                            <span onclick="openViewer(${index})" class="text-blue-600 text-xs font-semibold cursor-pointer flex items-center gap-0.5 group-hover:translate-x-0.5 transition duration-300">View →</span>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+            grid.insertAdjacentHTML('beforeend', cardHTML);
+
+            // Fetch the image down url string asynchronously from Firebase Storage
+            const imgElement = document.getElementById(imgId);
+            if (model.img) {
+                // If the stored value is already a full secure URL, use it directly
+                if (model.img.startsWith('http')) {
+                    imgElement.src = model.img;
+                    imgElement.classList.remove('opacity-0');
+                } else {
+                    // Otherwise resolve it from your storage bucket thumbnails directory
+                    const thumbnailRef = ref(storage, `models/thumbnails/${model.img}`);
+                    getDownloadURL(thumbnailRef)
+                        .then((url) => {
+                            imgElement.src = url;
+                            imgElement.classList.remove('opacity-0');
+                        })
+                        .catch((error) => {
+                            console.error(`Failed to load thumbnail: ${model.img}`, error);
+                            imgElement.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80";
+                            imgElement.classList.remove('opacity-0');
+                        });
+                }
+            }
+        });
+    }
+
+    onAuthStateChanged(auth, (user) => {
+        if (user) document.body.classList.add('admin-mode');
+        else document.body.classList.remove('admin-mode');
+    });
+
+    loadFromDatabase();
+</script>
+</body>
+</html>
