@@ -26,20 +26,20 @@
         .hover-lift:hover { transform: translateY(-8px); box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.1); }
     </style>
 </head>
-<body class="antialiased pt-0 transition-all duration-300" id="main-body">
+<body class="antialiased transition-all duration-300" id="main-body">
 
-    <div id="admin-panel" class="fixed top-0 inset-x-0 h-16 bg-slate-900 border-b border-slate-800 text-white z-50 flex items-center justify-between px-6 transform -translate-y-full transition-transform duration-300 shadow-xl">
+    <div id="admin-panel" class="fixed -top-16 inset-x-0 h-16 bg-slate-900 border-b border-slate-800 text-white z-50 flex items-center justify-between px-6 transition-all duration-300 shadow-xl">
         <div class="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-400 uppercase">
             <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             Live Cloud Console
         </div>
         <div class="flex flex-wrap items-center gap-3">
-            <button onclick="toggleCardState('furniture')" id="toggle-btn-furniture" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors">Loading...</button>
-            <button onclick="toggleCardState('hospitality')" id="toggle-btn-hospitality" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors">Loading...</button>
-            <button onclick="toggleCardState('industrial')" id="toggle-btn-industrial" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors">Loading...</button>
-            <button onclick="toggleCardState('architecture')" id="toggle-btn-architecture" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors">Loading...</button>
+            <button id="toggle-btn-furniture" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors">Loading...</button>
+            <button id="toggle-btn-hospitality" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors">Loading...</button>
+            <button id="toggle-btn-industrial" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors">Loading...</button>
+            <button id="toggle-btn-architecture" class="text-xs font-bold px-3 py-1.5 rounded border transition-colors">Loading...</button>
         </div>
-        <button onclick="exitAdminMode()" class="text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-2.5 py-1 rounded transition">Exit</button>
+        <button id="admin-exit-btn" class="text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-2.5 py-1 rounded transition">Exit</button>
     </div>
 
     <nav class="fixed w-full z-40 top-0 bg-white/80 backdrop-blur-md border-b border-slate-200 transition-all duration-300" id="main-nav">
@@ -54,60 +54,62 @@
         </div>
     </nav>
 
-    <section class="pt-32 pb-12 px-6 max-w-5xl mx-auto text-center">
-        <h1 class="text-5xl md:text-6xl font-bold tracking-tight text-slate-900 mb-6">
-            Reality Captured.<br><span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-500 to-blue-700">Flawlessly Deployed.</span>
-        </h1>
-        <p class="text-lg text-slate-600 max-w-2xl mx-auto">Select an industry vertical below to view our interactive 3D portfolios.</p>
-    </section>
+    <div id="content-wrapper" class="transition-all duration-300 pt-0">
+        <section class="pt-32 pb-12 px-6 max-w-5xl mx-auto text-center">
+            <h1 class="text-5xl md:text-6xl font-bold tracking-tight text-slate-900 mb-6">
+                Reality Captured.<br><span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-500 to-blue-700">Flawlessly Deployed.</span>
+            </h1>
+            <p class="text-lg text-slate-600 max-w-2xl mx-auto">Select an industry vertical below to view our interactive 3D portfolios.</p>
+        </section>
 
-    <section class="py-12 px-6 max-w-7xl mx-auto mb-20">
-        <div id="initial-cloud-loader" class="text-center py-20 text-sm text-slate-400 font-medium">
-            Syncing live showroom states from cloud...
-        </div>
+        <section class="py-12 px-6 max-w-7xl mx-auto mb-20">
+            <div id="initial-cloud-loader" class="text-center py-20 text-sm text-slate-400 font-medium">
+                Syncing live showroom states from cloud...
+            </div>
 
-        <div id="showroom-grid" class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 opacity-0 transition-opacity duration-300">
-            <a href="furniture.html" id="card-furniture" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
-                <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
-                <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
-                <div class="p-5">
-                    <h3 class="card-title font-bold text-slate-900 mb-1">Furniture & Decor</h3>
-                    <p class="card-desc text-xs text-slate-500">Retail staging and home decor AR.</p>
-                </div>
-            </a>
-            
-            <a href="hospitality.html" id="card-hospitality" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
-                <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
-                <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
-                <div class="p-5">
-                    <h3 class="card-title font-bold text-slate-900 mb-1">Culinary AR Menus</h3>
-                    <p class="card-desc text-xs text-slate-500">Table-side photorealistic food assets.</p>
-                </div>
-            </a>
-            
-            <a href="industrial.html" id="card-industrial" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
-                <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
-                <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
-                <div class="p-5">
-                    <h3 class="card-title font-bold text-slate-900 mb-1">Industrial Equipment</h3>
-                    <p class="card-desc text-xs text-slate-500">Heavy machinery and engineering scans.</p>
-                </div>
-            </a>
+            <div id="showroom-grid" class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 opacity-0 transition-opacity duration-300">
+                <a href="furniture.html" id="card-furniture" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+                    <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
+                    <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
+                    <div class="p-5">
+                        <h3 class="card-title font-bold text-slate-900 mb-1">Furniture & Decor</h3>
+                        <p class="card-desc text-xs text-slate-500">Retail staging and home decor AR.</p>
+                    </div>
+                </a>
+                
+                <a href="hospitality.html" id="card-hospitality" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+                    <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
+                    <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
+                    <div class="p-5">
+                        <h3 class="card-title font-bold text-slate-900 mb-1">Culinary AR Menus</h3>
+                        <p class="card-desc text-xs text-slate-500">Table-side photorealistic food assets.</p>
+                    </div>
+                </a>
+                
+                <a href="industrial.html" id="card-industrial" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+                    <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
+                    <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
+                    <div class="p-5">
+                        <h3 class="card-title font-bold text-slate-900 mb-1">Industrial Equipment</h3>
+                        <p class="card-desc text-xs text-slate-500">Heavy machinery and engineering scans.</p>
+                    </div>
+                </a>
 
-            <a href="architecture.html" id="card-architecture" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
-                <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
-                <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
-                <div class="p-5">
-                    <h3 class="card-title font-bold text-slate-900 mb-1">Architecture</h3>
-                    <p class="card-desc text-xs text-slate-500">Spatial captures and exterior digital twins.</p>
-                </div>
-            </a>
-        </div>
-    </section>
+                <a href="architecture.html" id="card-architecture" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+                    <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
+                    <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
+                    <div class="p-5">
+                        <h3 class="card-title font-bold text-slate-900 mb-1">Architecture</h3>
+                        <p class="card-desc text-xs text-slate-500">Spatial captures and exterior digital twins.</p>
+                    </div>
+                </a>
+            </div>
+        </section>
+    </div>
 
     <footer class="w-full bg-white border-t border-slate-200 py-6 px-6">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 font-medium">
-            <p id="copyright-trigger" class="cursor-pointer select-none active:text-slate-600 transition" ondblclick="enterAdminConsole()">© 2026 XLVII 47. All rights reserved.</p>
+            <p id="copyright-trigger" class="cursor-pointer select-none active:text-slate-600 transition">© 2026 XLVII 47. All rights reserved.</p>
             <div class="flex gap-4">
                 <a href="/" class="hover:text-slate-600 transition">Showrooms</a>
                 <a href="/about" class="hover:text-slate-600 transition">About</a>
@@ -117,7 +119,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, doc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
@@ -131,16 +133,14 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        const ADMIN_SECRET = "4747";
         let liveStates = {};
 
         function handleIntercept(e) { e.preventDefault(); return false; }
 
-        // Core Renderer: Drives card appearance based on cloud configuration data models
         function renderShowrooms() {
             document.querySelectorAll(".showroom-card").forEach(card => {
                 const id = card.id.replace('card-', '');
-                const isEnabled = liveStates[id] !== false; // Default to true if not explicitly set to false
+                const isEnabled = liveStates[id] !== false;
 
                 if (isEnabled) {
                     card.classList.add("hover-lift", "cursor-pointer");
@@ -160,7 +160,6 @@
                     card.addEventListener("click", handleIntercept);
                 }
 
-                // Synchronize console toggle key button frames dynamically
                 const btn = document.getElementById(`toggle-btn-${id}`);
                 if (btn) {
                     if (isEnabled) {
@@ -174,64 +173,80 @@
             });
         }
 
-        // 🔥 THE MAGIC FIX: Establishes a permanent live listener on the database document map container
+        // Live Listener for Card Statuses
         onSnapshot(doc(db, "site_control", "showrooms"), (docSnap) => {
             if (docSnap.exists()) {
                 liveStates = docSnap.data();
             }
-            
-            // Remove full-screen masking covers once the first cloud query returns values
             document.getElementById("initial-cloud-loader").classList.add("hidden");
-            const grid = document.getElementById("showroom-grid");
-            grid.classList.remove("opacity-0");
-            
+            document.getElementById("showroom-grid").classList.remove("opacity-0");
             renderShowrooms();
-        }, (error) => {
-            console.error("Firestore Listen Failed: ", error);
         });
 
-        // Mutates fields inside the cloud document instantly upon execution
+        // Trigger updates back to the Cloud
         window.toggleCardState = async function(cardId) {
             const currentVal = liveStates[cardId] !== false;
-            const docRef = doc(db, "site_control", "showrooms");
-            
             try {
-                await updateDoc(docRef, {
-                    [cardId]: !currentVal
-                });
+                await updateDoc(docRef, { [cardId]: !currentVal });
             } catch (err) {
-                alert("Error syncing updating document properties: " + err.message);
+                console.error("Error updating state:", err);
             }
         };
+        const docRef = doc(db, "site_control", "showrooms");
 
-        // --- Console Presentation Logic ---
-        window.enterAdminConsole = function() {
-            const accessKey = prompt("Enter Showroom Security Passcode:");
-            if (accessKey === ADMIN_SECRET) {
-                sessionStorage.setItem("admin-session", "active");
-                showAdminBar();
-            } else if (accessKey !== null) {
-                alert("Access Denied.");
+        // Dynamic click handlers for console actions
+        document.getElementById("toggle-btn-furniture").onclick = () => window.toggleCardState('furniture');
+        document.getElementById("toggle-btn-hospitality").onclick = () => window.toggleCardState('hospitality');
+        document.getElementById("toggle-btn-industrial").onclick = () => window.toggleCardState('industrial');
+        document.getElementById("toggle-btn-architecture").onclick = () => window.toggleCardState('architecture');
+        document.getElementById("admin-exit-btn").onclick = () => exitAdminMode();
+        document.getElementById("copyright-trigger").ondblclick = () => enterAdminConsole();
+
+        // 🔐 SECURE PASSCODE CHECK: Fetches access key credentials from remote DB collections
+        async function enterAdminConsole() {
+            const userInput = prompt("Enter Showroom Security Passcode:");
+            if (!userInput) return;
+
+            try {
+                const credentialSnap = await getDoc(doc(db, "site_control", "security"));
+                if (credentialSnap.exists() && userInput === credentialSnap.data().passcode) {
+                    sessionStorage.setItem("admin-session", "active");
+                    showAdminBar();
+                } else {
+                    alert("Access Denied.");
+                }
+            } catch (err) {
+                alert("Security handshake validation failed.");
             }
-        };
+        }
 
         function showAdminBar() {
-            document.getElementById("admin-panel").classList.remove("-translate-y-full");
-            document.getElementById("main-body").classList.add("pt-16");
+            const bar = document.getElementById("admin-panel");
+            bar.classList.remove("-top-16");
+            bar.classList.add("top-0");
+            
+            document.getElementById("main-nav").classList.remove("top-0");
             document.getElementById("main-nav").classList.add("top-16");
+            document.getElementById("content-wrapper").classList.add("pt-16");
             renderShowrooms();
         }
 
-        window.exitAdminMode = function() {
+        function exitAdminMode() {
             sessionStorage.removeItem("admin-session");
-            document.getElementById("admin-panel").classList.add("-translate-y-full");
-            document.getElementById("main-body").classList.remove("pt-16");
+            const bar = document.getElementById("admin-panel");
+            bar.classList.remove("top-0");
+            bar.classList.add("-top-16");
+            
             document.getElementById("main-nav").classList.remove("top-16");
-        };
+            document.getElementById("main-nav").classList.add("top-0");
+            document.getElementById("content-wrapper").classList.remove("pt-16");
+        }
 
-        // Recheck admin display configurations on page loading parameters
+        // Initialization check
         if (sessionStorage.getItem("admin-session") === "active") {
             showAdminBar();
+        } else {
+            exitAdminMode();
         }
     </script>
 </body>
