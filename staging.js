@@ -4,6 +4,7 @@ import { DRACOLoader }     from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { OrbitControls }   from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { GLTFExporter }    from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { USDZExporter }    from 'three/examples/jsm/exporters/USDZExporter.js';
 
 import { initializeApp }   from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
 import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
@@ -328,6 +329,29 @@ async function buildMergedGLB() {
     }); // → ArrayBuffer
 }
 
+/**
+ * Merge all active models into a single USDZ Uint8Array with world transforms
+ * baked in so the iOS AR viewer sees the correct arrangement.
+ */
+async function buildMergedUSDZ() {
+    scene.updateMatrixWorld(true);
+
+    const exportGroup = new THREE.Group();
+
+    activeModels.forEach(({ mesh }) => {
+        const clone = mesh.clone(true);
+        mesh.matrixWorld.decompose(
+            clone.position,
+            clone.quaternion,
+            clone.scale
+        );
+        exportGroup.add(clone);
+    });
+
+    const exporter = new USDZExporter();
+    return exporter.parse(exportGroup); // → Uint8Array
+}
+
 const isIOS     = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 const isAndroid = /Android/i.test(navigator.userAgent);
 
@@ -335,9 +359,10 @@ const isAndroid = /Android/i.test(navigator.userAgent);
  * Upload an ArrayBuffer to Firebase Storage under models/temp_stages/.
  * Returns the public HTTPS download URL.
  */
-async function uploadGLB(arrayBuffer, onProgress) {
-    const blob      = new Blob([arrayBuffer], { type: 'application/octet-stream' });
-    const filename  = `ar_scene_${Date.now()}.glb`;
+async function uploadSceneFile(arrayBuffer, ext, onProgress) {
+    const mimeType  = ext === 'usdz' ? 'model/vnd.usdz+zip' : 'application/octet-stream';
+    const blob      = new Blob([arrayBuffer], { type: mimeType });
+    const filename  = `ar_scene_${Date.now()}.${ext}`;
     const storageRef = ref(storage, `models/temp_stages/${filename}`);
     const uploadTask = uploadBytesResumable(storageRef, blob);
 
@@ -436,19 +461,20 @@ async function handleARButton() {
                 setLabel('⚡ Opening…');
                 triggerQuickLook(activeModels[0].usdzUrl);
             } else {
-                // Multiple models (or no USDZ) → export merged GLB and upload.
-                // Quick Look cannot read blob: URLs — it needs a real HTTPS URL.
+                // Multiple models (or no USDZ) → export merged USDZ and upload.
+                // Quick Look cannot read blob: URLs from an async context reliably, 
+                // so we use a real HTTPS URL.
                 setLabel('⚡ COMPILING…');
-                const arrayBuffer = await buildMergedGLB();
-                const glbUrl      = await uploadGLB(arrayBuffer, setLabel);
-                triggerQuickLook(glbUrl);
+                const arrayBuffer = await buildMergedUSDZ();
+                const usdzUrl     = await uploadSceneFile(arrayBuffer, 'usdz', setLabel);
+                triggerQuickLook(usdzUrl);
             }
 
         } else if (isAndroid) {
             // ── Android path ─────────────────────────────────────────────────
             setLabel('⚡ COMPILING…');
             const arrayBuffer = await buildMergedGLB();
-            const glbUrl      = await uploadGLB(arrayBuffer, setLabel);
+            const glbUrl      = await uploadSceneFile(arrayBuffer, 'glb', setLabel);
             openSceneViewer(glbUrl);
 
         } else {
