@@ -248,3 +248,20 @@ kbd {
     padding: 1px 4px;
     font-family: monospace;
 }
+
+/* --- Navigation Links --- */
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #86868b;
+    text-decoration: none;
+    padding: 4px 0;
+    margin-bottom: 4px;
+    transition: color 0.2s ease;
+}
+
+.back-link:hover {
+    color: #007aff; /* Switches to interactive blue on hover */
+}
