@@ -8,7 +8,6 @@
     <title>Shot 47 XLVII | Staging Sandbox</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="staging.css">
-    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js"></script>
 </head>
 <body>
 
@@ -26,7 +25,7 @@
 
         <div id="category-tabs">
             <button class="tab-btn active" data-category="furniture">Furniture</button>
-            <button class="tab-btn" data-category="carpet">Carpets</button>
+            <button class="tab-btn" data-category="carpets">Carpets</button>
             <button class="tab-btn" data-category="decor">Decor</button>
         </div>
 
@@ -49,13 +48,15 @@
             <button id="tool-translate" class="tool-btn active-tool" title="Move Mode">✛ Move</button>
             <button id="tool-rotate" class="tool-btn" title="Rotate Mode">⟳ Rotate</button>
             <button id="tool-delete" class="tool-btn delete-tool-mode" title="Toggle Delete Mode">🗑 Delete Mode</button>
-            <button id="view-ar-btn" class="btn-ar">View in Room</button>
+            <button id="view-ar-btn" class="btn-ar">View in AR</button>
         </div>
 
     </div>
 
-    <model-viewer id="hidden-ar-viewer" style="display: none;" ar ar-modes="quick-look scene-viewer"></model-viewer>
-
+    <!--
+        importmap: pin Three.js to r160 to match your original, using unpkg.
+        The "three/examples/jsm/" alias covers all the add-ons (loaders, controls, exporters).
+    -->
     <script type="importmap">
         {
             "imports": {
