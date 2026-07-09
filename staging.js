@@ -87,7 +87,7 @@ transformControls.addEventListener('dragging-changed', (e) => {
 // 4. STATE
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Each entry: { mesh: THREE.Object3D, glbUrl: string } */
+/** Each entry: { mesh: THREE.Object3D, glbUrl: string, usdzUrl: string|null } */
 const activeModels = [];
 
 /** Cache: glbUrl → THREE.Object3D (master, NEVER added to scene directly) */
@@ -118,14 +118,14 @@ function prepareMaster(root) {
  * Clone the cached master and place it at the origin.
  * The clone shares geometry & material references — memory-efficient.
  */
-function spawnFromCache(glbUrl) {
+function spawnFromCache(glbUrl, usdzUrl) {
     const mesh = modelCache[glbUrl].clone();
     mesh.position.set(0, 0, 0);
     mesh.rotation.set(0, 0, 0);
     mesh.scale.set(1, 1, 1);
 
     scene.add(mesh);
-    activeModels.push({ mesh, glbUrl });
+    activeModels.push({ mesh, glbUrl, usdzUrl: usdzUrl ?? null });
 
     if (currentTool !== 'delete') {
         transformControls.attach(mesh);
@@ -134,10 +134,11 @@ function spawnFromCache(glbUrl) {
 
 /**
  * Load a GLB from URL, cache it (without adding to scene), then spawn.
+ * usdzUrl is optional — stored so iOS can use it for single-model Quick Look.
  */
-function spawnModel(glbUrl) {
+function spawnModel(glbUrl, usdzUrl) {
     if (modelCache[glbUrl]) {
-        spawnFromCache(glbUrl);
+        spawnFromCache(glbUrl, usdzUrl);
         return;
     }
 
@@ -146,7 +147,7 @@ function spawnModel(glbUrl) {
         (gltf) => {
             prepareMaster(gltf.scene);
             modelCache[glbUrl] = gltf.scene; // cache master — never add this to scene
-            spawnFromCache(glbUrl);
+            spawnFromCache(glbUrl, usdzUrl);
         },
         undefined,
         (err) => console.error('[spawnModel] Load error:', err)
@@ -300,135 +301,112 @@ document.getElementById('freeze-btn').addEventListener('click', (e) => {
 
 /**
  * Merge all active models into a single GLB ArrayBuffer with world transforms
- * baked in, so the AR viewer sees the correct arrangement.
- *
- * The key steps:
- *   1. Force a matrix update on each mesh so matrixWorld is current.
- *   2. Clone each mesh, decompose its world matrix into the clone's local
- *      transform, and add it to a fresh Group (which has no parent transform).
- *   3. Export that Group as binary GLB.
+ * baked in so the AR viewer sees the correct arrangement.
  */
 async function buildMergedGLB() {
-    // Force world matrix update for all active models
     scene.updateMatrixWorld(true);
 
     const exportGroup = new THREE.Group();
 
     activeModels.forEach(({ mesh }) => {
-        const clone = mesh.clone(true); // deep clone — preserves geometry/material
-
-        // Decompose the world matrix into the clone's own transform components.
-        // This bakes the current position/rotation/scale into the root of the clone
-        // so it lands correctly when placed in the flat exportGroup.
+        const clone = mesh.clone(true);
+        // Decompose world matrix → local transform of the clone so positions
+        // are preserved when the clone is placed in the flat exportGroup.
         mesh.matrixWorld.decompose(
             clone.position,
             clone.quaternion,
             clone.scale
         );
-
         exportGroup.add(clone);
     });
 
     const exporter = new GLTFExporter();
-
-    // parseAsync is available in Three.js r152+ — preferred over the callback form
-    // because it works cleanly with async/await.
-    const arrayBuffer = await exporter.parseAsync(exportGroup, {
+    return exporter.parseAsync(exportGroup, {
         binary:      true,
         onlyVisible: true,
         animations:  [],
-    });
-
-    return arrayBuffer; // ArrayBuffer
+    }); // → ArrayBuffer
 }
 
 const isIOS     = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 const isAndroid = /Android/i.test(navigator.userAgent);
 
 /**
- * iOS Quick Look — trigger AR via a <a rel="ar"> anchor.
- *
- * Safari requires this anchor to be in the DOM and clicked synchronously
- * from a user gesture. The trick used here is to create a blob URL from
- * the exported GLB (which is synchronous once we have the ArrayBuffer),
- * then trigger the anchor click from within a Promise chain that was
- * started *inside* the original click handler — Safari considers this
- * still within the user-gesture window.
- *
- * Quick Look on iOS 13+ natively supports GLB, so no USDZ is required
- * for a multi-model scene export.
+ * Upload an ArrayBuffer to Firebase Storage under models/temp_stages/.
+ * Returns the public HTTPS download URL.
  */
-function triggerQuickLook(arrayBuffer) {
-    const blob    = new Blob([arrayBuffer], { type: 'model/gltf-binary' });
-    const blobUrl = URL.createObjectURL(blob);
-
-    const anchor = document.createElement('a');
-    anchor.setAttribute('rel', 'ar');
-    anchor.setAttribute('href', blobUrl);
-    anchor.style.cssText = 'display:none;position:fixed;'; // must be in DOM
-
-    // Quick Look requires a child <img> on the anchor
-    const img = document.createElement('img');
-    anchor.appendChild(img);
-
-    document.body.appendChild(anchor);
-    anchor.click();
-
-    // Clean up after Quick Look has had time to open
-    setTimeout(() => {
-        document.body.removeChild(anchor);
-        URL.revokeObjectURL(blobUrl);
-    }, 3000);
-}
-
-/**
- * Android Scene Viewer — export, upload to Firebase, open via intent URL.
- *
- * Scene Viewer does not support blob URLs — it needs a public HTTPS URL,
- * hence the Firebase Storage upload step.
- */
-async function openAndroidSceneViewer(arrayBuffer, arBtn, originalLabel) {
-    arBtn.textContent = '⏳ Uploading…';
-
+async function uploadGLB(arrayBuffer, onProgress) {
     const blob      = new Blob([arrayBuffer], { type: 'application/octet-stream' });
     const filename  = `ar_scene_${Date.now()}.glb`;
     const storageRef = ref(storage, `models/temp_stages/${filename}`);
     const uploadTask = uploadBytesResumable(storageRef, blob);
 
     console.log(`[AR] Uploading ${(blob.size / 1024 / 1024).toFixed(2)} MB …`);
+    if (onProgress) onProgress('⏳ Uploading…');
 
     await new Promise((resolve, reject) =>
         uploadTask.on('state_changed', null, reject, resolve)
     );
 
-    const glbUrl  = await getDownloadURL(uploadTask.snapshot.ref);
-    const encoded = encodeURIComponent(glbUrl);
+    return getDownloadURL(uploadTask.snapshot.ref);
+}
+
+/**
+ * iOS Quick Look — trigger AR via a <a rel="ar"> anchor.
+ *
+ * IMPORTANT: blob: URLs do NOT work here. Quick Look runs as a separate
+ * OS-level process (outside the browser sandbox) and cannot access blob URLs —
+ * which is why the prompt appeared but nothing loaded previously.
+ *
+ * The anchor must use a real public HTTPS URL. We obtain that by uploading
+ * the merged GLB to Firebase Storage first.
+ *
+ * For single-model scenes where a USDZ is already available in Firebase,
+ * we use that directly (faster, better quality, no upload needed).
+ */
+function triggerQuickLook(httpsUrl) {
+    const anchor = document.createElement('a');
+    anchor.setAttribute('rel', 'ar');
+    anchor.setAttribute('href', httpsUrl);
+    anchor.style.cssText = 'display:none;position:fixed;';
+
+    // Safari requires a child <img> element on the anchor or Quick Look won't open.
+    anchor.appendChild(document.createElement('img'));
+
+    document.body.appendChild(anchor);
+    anchor.click();
+
+    setTimeout(() => document.body.removeChild(anchor), 500);
+}
+
+/**
+ * Android Scene Viewer via intent URL.
+ * Scene Viewer also requires a public HTTPS URL — blob: URLs are not supported.
+ */
+function openSceneViewer(glbUrl) {
+    const encoded  = encodeURIComponent(glbUrl);
     const fallback = encodeURIComponent(window.location.href);
 
-    // ar_preferred instead of ar_only — degrades gracefully if ARCore isn't installed
-    const intentUrl =
+    // ar_preferred degrades gracefully if ARCore isn't installed.
+    window.location.href =
         `intent://arvr.google.com/scene-viewer/1.0` +
         `?file=${encoded}&mode=ar_preferred` +
         `#Intent;scheme=https;package=com.google.ar.core;` +
         `action=android.intent.action.VIEW;` +
         `S.browser_fallback_url=${fallback};end;`;
-
-    window.location.href = intentUrl;
-
-    arBtn.textContent = originalLabel;
-    arBtn.disabled    = false;
 }
 
 /**
- * Desktop fallback — download the merged GLB so it can be tested in
- * a 3D viewer or imported into another tool.
+ * Desktop fallback — download the merged GLB.
  */
 function downloadGLB(arrayBuffer) {
-    const blob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `staged_scene_${Date.now()}.glb`;
+    const url = URL.createObjectURL(
+        new Blob([arrayBuffer], { type: 'application/octet-stream' })
+    );
+    const a       = Object.assign(document.createElement('a'), {
+        href:     url,
+        download: `staged_scene_${Date.now()}.glb`,
+    });
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -441,36 +419,51 @@ async function handleARButton() {
         return;
     }
 
-    const arBtn       = document.getElementById('view-ar-btn');
+    const arBtn        = document.getElementById('view-ar-btn');
     const originalLabel = arBtn.textContent;
-    arBtn.textContent = '⚡ COMPILING…';
-    arBtn.disabled    = true;
+    arBtn.disabled     = true;
+
+    const setLabel = (text) => { arBtn.textContent = text; };
 
     try {
-        const arrayBuffer = await buildMergedGLB();
-
         if (isIOS) {
-            // iOS: use blob URL + Quick Look — no upload needed, handles multiple models
-            triggerQuickLook(arrayBuffer);
-            arBtn.textContent = originalLabel;
-            arBtn.disabled    = false;
+            // ── iOS path ─────────────────────────────────────────────────────
+            // Single model with a pre-existing USDZ → open it directly.
+            // This is the fastest path and gives the best visual quality.
+            const onlyOne = activeModels.length === 1 && activeModels[0].usdzUrl;
+
+            if (onlyOne) {
+                setLabel('⚡ Opening…');
+                triggerQuickLook(activeModels[0].usdzUrl);
+            } else {
+                // Multiple models (or no USDZ) → export merged GLB and upload.
+                // Quick Look cannot read blob: URLs — it needs a real HTTPS URL.
+                setLabel('⚡ COMPILING…');
+                const arrayBuffer = await buildMergedGLB();
+                const glbUrl      = await uploadGLB(arrayBuffer, setLabel);
+                triggerQuickLook(glbUrl);
+            }
 
         } else if (isAndroid) {
-            // Android: Scene Viewer needs a real HTTPS URL → upload first
-            await openAndroidSceneViewer(arrayBuffer, arBtn, originalLabel);
+            // ── Android path ─────────────────────────────────────────────────
+            setLabel('⚡ COMPILING…');
+            const arrayBuffer = await buildMergedGLB();
+            const glbUrl      = await uploadGLB(arrayBuffer, setLabel);
+            openSceneViewer(glbUrl);
 
         } else {
-            // Desktop: download the merged GLB
+            // ── Desktop fallback ─────────────────────────────────────────────
+            setLabel('⚡ COMPILING…');
+            const arrayBuffer = await buildMergedGLB();
             downloadGLB(arrayBuffer);
-            arBtn.textContent = originalLabel;
-            arBtn.disabled    = false;
         }
 
     } catch (err) {
         console.error('[AR Export] Error:', err);
         alert('AR export failed. See the browser console for details.');
-        arBtn.textContent = originalLabel;
-        arBtn.disabled    = false;
+    } finally {
+        setLabel(originalLabel);
+        arBtn.disabled = false;
     }
 }
 
@@ -540,11 +533,16 @@ function renderCatalog(category) {
                 .catch(() => { /* leave blank */ });
         }
 
-        // GLB URL → enable card click
-        resolveUrl(asset.glbName, 'models/glb')
-            .then((glbUrl) => {
+        // Resolve GLB + optional USDZ, then enable card click
+        const glbPromise  = resolveUrl(asset.glbName, 'models/glb');
+        const usdzPromise = asset.usdzName
+            ? resolveUrl(asset.usdzName, 'models/usdz')
+            : Promise.resolve(null);
+
+        Promise.all([glbPromise, usdzPromise])
+            .then(([glbUrl, usdzUrl]) => {
                 card.classList.remove('state-loading');
-                card.addEventListener('click', () => spawnModel(glbUrl));
+                card.addEventListener('click', () => spawnModel(glbUrl, usdzUrl));
             })
             .catch(() => {
                 card.classList.remove('state-loading');
@@ -562,9 +560,10 @@ function initCatalogSync() {
                 const d = doc.data();
                 if (!d.glb) return;
                 registry[category].push({
-                    title:   d.title ?? 'Unnamed',
-                    glbName: d.glb,
-                    imgName: d.img  ?? null,
+                    title:    d.title   ?? 'Unnamed',
+                    glbName:  d.glb,
+                    usdzName: d.usdz    ?? null,
+                    imgName:  d.img     ?? null,
                 });
             });
             if (category === activeCategory) renderCatalog(activeCategory);
