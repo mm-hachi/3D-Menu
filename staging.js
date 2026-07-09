@@ -187,53 +187,122 @@ window.addEventListener('resize', () => {
     renderer.setSize(container.clientWidth, container.clientHeight);
 });
 
-// --- 6. CATALOG DYNAMIC UI COUPLING ---
-function setupCatalogItemItemListener(element) {
-    element.addEventListener('click', () => spawnModel(element.getAttribute('data-url')));
+// --- 6. DYNAMIC FIREBASE STREAMING SIDEBAR ENGINE ---
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getStorage, ref, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+
+// Initialize using your exact project configuration matrix
+const firebaseConfig = {
+    apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
+    authDomain: "shot47-database.firebaseapp.com",
+    projectId: "shot47-database",
+    storageBucket: "shot47-database.firebasestorage.app",
+    messagingSenderId: "77237094269",
+    appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const storage = getStorage(app);
+
+// Local UI state management arrays
+let liveAssetRegistry = {
+    furniture: [],
+    carpets: [],
+    decor: []
+};
+let currentActiveCategory = 'furniture';
+
+// Map your tabs to your actual matching Firestore collection endpoints
+const collectionMap = {
+    furniture: 'furniture_models',
+    carpets: 'carpets_models',
+    decor: 'decor_models'
+};
+
+// Open persistent database streams to all three asset categories
+function initLiveCatalogSync() {
+    console.log("📡 Attaching real-time streaming hooks to collections...");
+
+    Object.keys(collectionMap).forEach((categoryKey) => {
+        const firestoreCollection = collection(db, collectionMap[categoryKey]);
+
+        // Establish an active listener stream
+        onSnapshot(firestoreCollection, (snapshot) => {
+            // Flush old collection entries before rewriting updated nodes
+            liveAssetRegistry[categoryKey] = [];
+
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                if (data.glb) { // Ensure a structural glb filename exists
+                    liveAssetRegistry[categoryKey].push({
+                        title: data.title || "Unnamed Object",
+                        fileName: data.glb
+                    });
+                }
+            });
+
+            console.log(`✨ ${categoryKey} collection updated dynamically.`);
+            
+            // Re-render UI instantly if the user is currently viewing the updated tab
+            if (categoryKey === currentActiveCategory) {
+                renderCatalog(currentActiveCategory);
+            }
+        }, (error) => console.error(`Sync fault on ${categoryKey}:`, error));
+    });
 }
 
-document.querySelectorAll('.catalog-item').forEach(item => setupCatalogItemItemListener(item));
+// Generate UI element grids matching selected data parameters
+function renderCatalog(category) {
+    const catalogContainer = document.getElementById('catalog-list');
+    catalogContainer.innerHTML = ''; 
 
-// Add Remote Web Asset Forms
-document.getElementById('add-asset-btn').addEventListener('click', () => {
-    const url = document.getElementById('asset-url-input').value.trim();
-    const name = document.getElementById('asset-name-input').value.trim() || "Web Asset";
-    if (!url) return alert("Please paste a valid URL.");
+    const assets = liveAssetRegistry[category] || [];
 
-    createNewCatalogUIElement(name, url);
-    spawnModel(url); // Auto-spawn remote links right on click
+    if (assets.length === 0) {
+        catalogContainer.innerHTML = `<div class="empty-notice">Syncing collection matrix...</div>`;
+        return;
+    }
 
-    document.getElementById('asset-url-input').value = '';
-    document.getElementById('asset-name-input').value = '';
-});
+    assets.forEach((asset) => {
+        const card = document.createElement('div');
+        card.className = 'catalog-item state-loading';
+        card.innerHTML = `<strong>${asset.title}</strong>`;
+        catalogContainer.appendChild(card);
 
-// Local File Tracker Interface via Blobs Array
-document.getElementById('local-file-input').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.addEventListener('load', (event) => {
-        const blob = new Blob([event.target.result], { type: 'application/octet-stream' });
-        const blobURL = URL.createObjectURL(blob);
-
-        // Form clean UI card reference point before spawning
-        const cleanName = file.name.replace('.glb', '');
-        createNewCatalogUIElement(cleanName, blobURL);
-
-        spawnModel(blobURL);
-    }, false);
-    reader.readAsArrayBuffer(file);
-});
-
-function createNewCatalogUIElement(name, targetUrl) {
-    const newItem = document.createElement('div');
-    newItem.className = 'catalog-item';
-    newItem.setAttribute('data-url', targetUrl);
-    newItem.innerHTML = `<strong>${name}</strong>`;
-    document.getElementById('catalog-list').appendChild(newItem);
-    setupCatalogItemItemListener(newItem);
+        // Resolve download paths directly from Firebase Storage bucket on demand
+        const glbStorageRef = ref(storage, `models/glb/${asset.fileName}`);
+        
+        getDownloadURL(glbStorageRef)
+            .then((secureUrl) => {
+                card.classList.remove('state-loading');
+                
+                // Bind click event to trigger the main caching spawner engine
+                card.addEventListener('click', () => {
+                    spawnModel(secureUrl);
+                });
+            })
+            .catch((err) => {
+                console.error(`Storage asset mismatch on item [${asset.title}]:`, err);
+                card.innerHTML = `<strong style="color:#ff3b30;">Error Loading</strong>`;
+            });
+    });
 }
+
+// Bind navigation filtering tabs to view modifications
+document.querySelectorAll('.tab-btn').forEach(tab => {
+    tab.addEventListener('click', (e) => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        
+        currentActiveCategory = e.target.getAttribute('data-category');
+        renderCatalog(currentActiveCategory);
+    });
+});
+
+// Fire connection engines at program execution setup runtime
+initLiveCatalogSync();
 
 // --- 7. ANIMATION EXECUTION & DEBUG MODULES ---
 function animate() {
