@@ -3,6 +3,12 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+
+// Import Firebase Modular Framework tools
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getStorage, ref, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
 // --- 1. SETUP ENVIRONMENT & STATE ---
 const container = document.getElementById('canvas-container');
@@ -18,9 +24,8 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 container.appendChild(renderer.domElement);
 
-// Global State Arrays & Performance Memory Caches
 const activeModels = [];
-const modelCache = {}; // Prevents redundant network downloads and duplicate GPU allocations
+const modelCache = {}; 
 let isEngineRunning = true;
 
 const raycaster = new THREE.Raycaster();
@@ -32,12 +37,11 @@ orbitControls.enableDamping = true;
 
 const transformControl = new TransformControls(camera, renderer.domElement);
 transformControl.addEventListener('dragging-changed', (event) => {
-    // Disable camera movement when moving or spinning models so viewports don't conflict
-    orbitControls.enabled = !event.value;
+    orbitControls.enabled = !event.value; // Prevent view collision while transforming assets
 });
 scene.add(transformControl);
 
-// Lighting & Environment Matrix
+// Lighting Matrix
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
 scene.add(ambientLight);
 
@@ -65,27 +69,22 @@ loader.setDRACOLoader(dracoLoader);
 
 // --- 3. CACHED ASSET SPAWNING ENGINE ---
 function spawnModel(url) {
-    // SCENARIO A: Instanced Cloning (Asset already loaded into browser memory)
     if (modelCache[url]) {
-        console.log(`🚀 Cache Hit: Cloning instance from master memory profile for: ${url}`);
+        console.log(`🚀 Cache Hit: Re-instancing geometry profile: ${url}`);
         const clonedModel = modelCache[url].clone();
-
-        // Ensure standard transforms reset seamlessly
+        
         clonedModel.position.set(0, 0, 0);
         clonedModel.rotation.set(0, 0, 0);
         clonedModel.scale.set(1, 1, 1);
 
         scene.add(clonedModel);
         activeModels.push(clonedModel);
-
-        // Automatically isolate new instance onto target transform gizmo
+        
         transformControl.attach(clonedModel);
-        transformControl.setMode('translate');
         return;
     }
 
-    // SCENARIO B: Network/Local File Initialization (First time rendering asset)
-    console.log(`📦 Cache Miss: Initializing fresh data parse pipeline for: ${url}`);
+    console.log(`📦 Cache Miss: Initializing data stream parsing pipeline: ${url}`);
     loader.load(url, (gltf) => {
         const masterModel = gltf.scene;
 
@@ -93,14 +92,12 @@ function spawnModel(url) {
             if (node.isMesh) {
                 node.castShadow = true;
                 node.receiveShadow = true;
-                node.userData.isInteractable = true;
+                node.userData.isInteractable = true; 
             }
         });
 
-        // Store standard master model layout in cache reference dictionary
         modelCache[url] = masterModel;
 
-        // Generate clean operational copy from master template
         const liveModel = masterModel.clone();
         liveModel.position.set(0, 0, 0);
 
@@ -108,8 +105,7 @@ function spawnModel(url) {
         activeModels.push(liveModel);
 
         transformControl.attach(liveModel);
-        transformControl.setMode('translate');
-    }, undefined, (error) => console.error('Error parsing 3D file asset:', error));
+    }, undefined, (error) => console.error('Error parsing production file asset:', error));
 }
 
 // --- 4. SELECTION & DELETION LOGIC ---
@@ -117,11 +113,9 @@ function deleteSelectedObject() {
     const selectedObject = transformControl.object;
     if (!selectedObject) return;
 
-    // Drop tracking parameters on target layout immediately
     transformControl.detach();
     scene.remove(selectedObject);
 
-    // Deep clean instance structures from running rendering memory loops
     selectedObject.traverse((node) => {
         if (node.isMesh) {
             node.geometry.dispose();
@@ -139,8 +133,7 @@ function deleteSelectedObject() {
 
 // --- 5. INTERACTION EVENT LISTENERS ---
 window.addEventListener('mousedown', (e) => {
-    // Retain focus bounds if user clicks the operational gizmo itself
-    if (transformControl.axis !== null) return;
+    if (transformControl.axis !== null) return; 
 
     const rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -150,27 +143,24 @@ window.addEventListener('mousedown', (e) => {
     const intersects = raycaster.intersectObjects(activeModels, true);
 
     if (intersects.length > 0) {
-        // Isolate root asset grouping matrix below scene layout boundaries
         let root = intersects[0].object;
         while (root.parent && root.parent !== scene) {
             root = root.parent;
         }
         transformControl.attach(root);
     } else {
-        // Detach gizmo if user clicks empty floor/background void spaces
         transformControl.detach();
     }
 });
 
-// Keyboard Mapping Handlers
 window.addEventListener('keydown', (e) => {
     if (document.activeElement.tagName === 'INPUT') return;
 
     switch (e.key.toLowerCase()) {
-        case 't': // Translate (Arrows Tool)
+        case 't':
             transformControl.setMode('translate');
             break;
-        case 'r': // Rotate (Rings Tool)
+        case 'r':
             transformControl.setMode('rotate');
             break;
         case 'delete':
@@ -187,12 +177,7 @@ window.addEventListener('resize', () => {
     renderer.setSize(container.clientWidth, container.clientHeight);
 });
 
-// --- 6. DYNAMIC FIREBASE STREAMING SIDEBAR ENGINE ---
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { getStorage, ref, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
-
-// Initialize using your exact project configuration matrix
+// --- 6. DYNAMIC FIREBASE STREAMING SIDEBAR GALLERY ---
 const firebaseConfig = {
     apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
     authDomain: "shot47-database.firebaseapp.com",
@@ -206,54 +191,43 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-// Local UI state management arrays
-let liveAssetRegistry = {
-    furniture: [],
-    carpets: [],
-    decor: []
-};
+let liveAssetRegistry = { furniture: [], carpets: [], decor: [] };
 let currentActiveCategory = 'furniture';
 
-// Map your tabs to your actual matching Firestore collection endpoints
 const collectionMap = {
     furniture: 'furniture_models',
     carpets: 'carpets_models',
     decor: 'decor_models'
 };
 
-// Open persistent database streams to all three asset categories
 function initLiveCatalogSync() {
-    console.log("📡 Attaching real-time streaming hooks to collections...");
+    console.log("📡 Attaching real-time streaming hooks to all portfolio collections...");
 
     Object.keys(collectionMap).forEach((categoryKey) => {
         const firestoreCollection = collection(db, collectionMap[categoryKey]);
 
-        // Establish an active listener stream
         onSnapshot(firestoreCollection, (snapshot) => {
-            // Flush old collection entries before rewriting updated nodes
             liveAssetRegistry[categoryKey] = [];
 
             snapshot.forEach((doc) => {
                 const data = doc.data();
-                if (data.glb) { // Ensure a structural glb filename exists
+                if (data.glb) { 
                     liveAssetRegistry[categoryKey].push({
                         title: data.title || "Unnamed Object",
-                        fileName: data.glb
+                        fileName: data.glb,
+                        imgName: data.img || ""
                     });
                 }
             });
 
-            console.log(`✨ ${categoryKey} collection updated dynamically.`);
-            
-            // Re-render UI instantly if the user is currently viewing the updated tab
+            console.log(`✨ Sync complete for collection profile: ${categoryKey}`);
             if (categoryKey === currentActiveCategory) {
                 renderCatalog(currentActiveCategory);
             }
-        }, (error) => console.error(`Sync fault on ${categoryKey}:`, error));
+        }, (error) => console.error(`Sync error on portfolio group [${categoryKey}]:`, error));
     });
 }
 
-// Generate UI element grids matching selected data parameters
 function renderCatalog(category) {
     const catalogContainer = document.getElementById('catalog-list');
     catalogContainer.innerHTML = ''; 
@@ -261,36 +235,59 @@ function renderCatalog(category) {
     const assets = liveAssetRegistry[category] || [];
 
     if (assets.length === 0) {
-        catalogContainer.innerHTML = `<div class="empty-notice">Syncing collection matrix...</div>`;
+        catalogContainer.innerHTML = `<div class="empty-notice">Updating digital catalog...</div>`;
         return;
     }
 
     assets.forEach((asset) => {
         const card = document.createElement('div');
-        card.className = 'catalog-item state-loading';
-        card.innerHTML = `<strong>${asset.title}</strong>`;
+        card.className = 'catalog-item visual-card state-loading';
+        card.title = asset.title;
+        
+        card.innerHTML = `
+            <div class="thumb-wrapper">
+                <img class="catalog-thumb opacity-0" alt="${asset.title}" />
+            </div>
+            <div class="card-meta"><span>${asset.title}</span></div>
+        `;
         catalogContainer.appendChild(card);
 
-        // Resolve download paths directly from Firebase Storage bucket on demand
+        const imgElement = card.querySelector('.catalog-thumb');
+
+        // Resolve Image Thumbnail File Reference Profile
+        if (asset.imgName) {
+            if (asset.imgName.startsWith('http')) {
+                imgElement.src = asset.imgName;
+                imgElement.classList.remove('opacity-0');
+            } else {
+                const thumbStorageRef = ref(storage, `models/thumbnails/${asset.imgName}`);
+                getDownloadURL(thumbStorageRef)
+                    .then((url) => {
+                        imgElement.src = url;
+                        imgElement.classList.remove('opacity-0');
+                    })
+                    .catch((err) => {
+                        console.error(`Thumbnail path missing reference: ${asset.imgName}`, err);
+                        imgElement.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=150&q=80";
+                        imgElement.classList.remove('opacity-0');
+                    });
+            }
+        }
+
+        // Resolve GLB Run-time Geometry Data Reference
         const glbStorageRef = ref(storage, `models/glb/${asset.fileName}`);
-        
         getDownloadURL(glbStorageRef)
             .then((secureUrl) => {
                 card.classList.remove('state-loading');
-                
-                // Bind click event to trigger the main caching spawner engine
-                card.addEventListener('click', () => {
-                    spawnModel(secureUrl);
-                });
+                card.addEventListener('click', () => spawnModel(secureUrl));
             })
             .catch((err) => {
-                console.error(`Storage asset mismatch on item [${asset.title}]:`, err);
-                card.innerHTML = `<strong style="color:#ff3b30;">Error Loading</strong>`;
+                console.error(`Missing runtime asset reference deployment [${asset.title}]:`, err);
+                card.classList.add('error-state');
             });
     });
 }
 
-// Bind navigation filtering tabs to view modifications
 document.querySelectorAll('.tab-btn').forEach(tab => {
     tab.addEventListener('click', (e) => {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -301,10 +298,52 @@ document.querySelectorAll('.tab-btn').forEach(tab => {
     });
 });
 
-// Fire connection engines at program execution setup runtime
-initLiveCatalogSync();
+// --- 7. AR EXPORT COMPILATION ENGINE ---
+function exportSceneToAR() {
+    if (activeModels.length === 0) {
+        return alert("Your staging floor is empty. Add models before viewing in AR.");
+    }
 
-// --- 7. ANIMATION EXECUTION & DEBUG MODULES ---
+    const exporter = new GLTFExporter();
+    const exportGroup = new THREE.Group();
+    
+    activeModels.forEach((model) => {
+        exportGroup.add(model.clone());
+    });
+
+    console.log("🛠️ Compiling spatial scene layout for AR execution channels...");
+
+    exporter.parse(
+        exportGroup,
+        function (gltf) {
+            const blob = new Blob([gltf], { type: 'application/octet-stream' });
+            const blobURL = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.style.display = 'none';
+            document.body.appendChild(link);
+
+            // Direct intent call link targeting Android native Scene Viewer pipelines
+            link.href = `intent://arvr.google.com/scene-viewer/1.0?file=${window.location.origin}/${blobURL}&mode=ar_only#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;end;`;
+            
+            // Fallback for desktop configurations
+            if (!navigator.userAgent.match(/Android|iPhone|iPad/i)) {
+                link.href = blobURL;
+                link.download = 'my-staged-scene.glb';
+                console.log("💾 Desktop detected: Downloading compiled room asset schema configuration.");
+            }
+
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(blobURL);
+        },
+        (error) => console.error('An error occurred during scene composition compilation:', error),
+        { binary: true }
+    );
+}
+
+document.getElementById('view-ar-btn').addEventListener('click', exportSceneToAR);
+
+// --- 8. ANIMATION ENGINE RUNTIME TRACKING ---
 function animate() {
     if (!isEngineRunning) return;
     requestAnimationFrame(animate);
@@ -312,7 +351,6 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// Emergency Debug Switch Hook
 document.getElementById('freeze-btn').addEventListener('click', (e) => {
     isEngineRunning = !isEngineRunning;
     e.target.textContent = isEngineRunning ? "🛑 FREEZE ENGINE" : "▶️ RESUME ENGINE";
@@ -320,5 +358,6 @@ document.getElementById('freeze-btn').addEventListener('click', (e) => {
     if (isEngineRunning) animate();
 });
 
-// Fire Pipeline Initialization
+// Kickstart Background Event Loops
+initLiveCatalogSync();
 animate();
