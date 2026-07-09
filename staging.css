@@ -42,20 +42,21 @@ body {
     gap: 6px;
     align-items: center;
     width: calc(100% - 40px);
-    max-width: 480px;
+    max-width: 520px;
 }
 
 .tool-btn {
     flex: 1;
     border: none;
     background: transparent;
-    padding: 10px 8px;
-    font-size: 0.8rem;
+    padding: 10px 4px;
+    font-size: 0.78rem;
     font-weight: 600;
     border-radius: 10px;
     color: #515154;
     white-space: nowrap;
     text-align: center;
+    transition: all 0.2s ease;
 }
 
 .tool-btn.active-tool {
@@ -64,21 +65,25 @@ body {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-.tool-btn.delete-tool {
-    color: #ff3b30;
+/* Visually distinct active warning style when Delete Mode is engaged */
+.tool-btn.delete-tool-mode.active-tool {
+    background-color: #ff3b30 !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 8px rgba(255, 59, 48, 0.3);
 }
-.tool-btn.delete-tool:active {
-    background-color: rgba(255, 59, 48, 0.1);
+
+.tool-btn.delete-tool-mode {
+    color: #ff3b30;
 }
 
 /* Unified Floating Engine AR Trigger Action Link Button */
 .btn-ar {
-    flex: 2;
+    flex: 1.8;
     background-color: #007aff;
     color: #ffffff;
     border: none;
     border-radius: 12px;
-    padding: 10px 14px;
+    padding: 10px 12px;
     font-size: 0.82rem;
     font-weight: 700;
     letter-spacing: -0.01em;
@@ -253,10 +258,10 @@ kbd {
         padding: 16px;
     }
     #controls-hint {
-        display: none; /* Hide keyboard shortcut guidelines on touch devices */
+        display: none;
     }
     #mobile-transform-toolbar {
-        bottom: calc(42vh + 16px); /* Keeps floating UI docked directly above mobile split viewport area */
+        bottom: calc(42vh + 16px);
     }
 }
 
