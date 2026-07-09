@@ -1,66 +1,52 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Spatial Staging Sandbox</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="color-scheme" content="light only">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <title>Shot 47 XLVII | Staging Sandbox</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="staging.css">
 </head>
-
 <body>
 
-    <div id="app-container">
-        <div id="sidebar">
-            <a href="furniture.html" class="back-link">
-                ← Back to Departments Hub
-            </a>
-            <button id="freeze-btn" class="btn-danger">🛑 FREEZE ENGINE</button>
+    <div id="sidebar">
+        <a href="furniture.html" class="back-link">
+            ← Back to Departments Hub
+        </a>
 
-            <hr class="divider" />
+        <button id="freeze-btn" class="btn-danger">🛑 FREEZE ENGINE</button>
+        
+        <hr class="divider" />
 
-            <h2>Catalog Manager</h2>
+        <h2>Staging Catalog</h2>
+        <p class="subtitle">Select a department to browse available spatial assets.</p>
 
-            <div class="control-group">
-                <label for="local-file-input" class="custom-file-upload">
-                    📁 Import Local 3D Asset (.glb)
-                </label>
-                <input type="file" id="local-file-input" accept=".glb" />
-            </div>
-
-            <div class="form-group">
-                <h3>Add Remote URL Asset</h3>
-                <input type="text" id="asset-name-input" placeholder="Asset Name (e.g., Luxury Rug)" />
-                <input type="text" id="asset-url-input" placeholder="Paste .glb CDN URL link here..." />
-                <button id="add-asset-btn" class="btn-primary">Add to Catalog List</button>
-            </div>
-
-            <div id="catalog-list">
-                <h3>Available Staging Assets</h3>
-            </div>
-
-            <div id="controls-hint">
-                <p><strong>Viewport Controls:</strong></p>
-                <ul>
-                    <li>Left-Click + Drag: Orbit Camera</li>
-                    <li>Right-Click + Drag: Pan Space</li>
-                    <li>Scroll / Pinch: Zoom Depth</li>
-                </ul>
-                <p><strong>Transform Gizmo Hotkeys:</strong></p>
-                <ul>
-                    <li><kbd>Left-Click</kbd> Asset: Select & Target</li>
-                    <li><kbd>T</kbd> Key: Toggle <strong>Move Arrows</strong></li>
-                    <li><kbd>R</kbd> Key: Toggle <strong>Rotate Rings</strong></li>
-                    <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>: Drop Target Mesh</li>
-                    <li>Left-Click Void: Clear Selection</li>
-                </ul>
-            </div>
+        <div id="category-tabs">
+            <button class="tab-btn active" data-category="furniture">Furniture</button>
+            <button class="tab-btn" data-category="carpets">Carpets</button>
+            <button class="tab-btn" data-category="decor">Decor</button>
         </div>
 
-        <div id="canvas-container"></div>
+        <div id="catalog-list">
+            </div>
+
+        <div id="controls-hint">
+            <p><strong>Transform Hotkeys:</strong></p>
+            <ul>
+                <li><kbd>Left-Click</kbd> Model: Select / Focus</li>
+                <li><kbd>T</kbd> Key: Move Mode (Translate)</li>
+                <li><kbd>R</kbd> Key: Rotate Mode</li>
+                <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>: Delete Model</li>
+            </ul>
+        </div>
+        
+        <button id="view-ar-btn" class="btn-ar">📐 VIEW SCENE IN AR</button>
     </div>
 
-    <!-- Script Entry Initialization Modules -->
+    <div id="canvas-container"></div>
+
     <script type="importmap">
         {
             "imports": {
@@ -70,8 +56,6 @@
         }
     </script>
     
-    <!-- Main Application Entry Point mapped to staging.js -->
     <script type="module" src="staging.js"></script>
 </body>
-
 </html>
