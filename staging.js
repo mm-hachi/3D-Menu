@@ -518,7 +518,7 @@ let activeCategory = 'furniture';
 // Note: these collection names match your original staging.js exactly
 const collectionMap = {
     furniture: 'furniture_models',
-    carpets:   'carpets_models',
+    carpets:   'carpet_models',
     decor:     'decor_models',
 };
 
