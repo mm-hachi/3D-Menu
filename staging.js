@@ -1,510 +1,473 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader }      from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader }     from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { OrbitControls }   from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
-import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
-
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { getStorage, ref, getDownloadURL, uploadBytesResumable } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
-
-// gltf-transform runtime for post-export optimization
-import { WebIO } from 'https://esm.sh/@gltf-transform/core';
-import { prune, dedup, weld, resample } from 'https://esm.sh/@gltf-transform/functions';
-
-// --- 1. SETUP ENVIRONMENT & STATE ---
+import { GLTFExporter }    from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { initializeApp }   from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+import { getStorage, ref, getDownloadURL, uploadBytesResumable } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js';
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. SCENE SETUP
+// ─────────────────────────────────────────────────────────────────────────────
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#f5f5f7');
-
-const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
-camera.position.set(0, 5, 8);
-
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+const camera = new THREE.PerspectiveCamera(
+    60,
+    container.clientWidth / container.clientHeight,
+    0.01,
+    1000
+);
+camera.position.set(0, 4, 8);
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setSize(container.clientWidth, container.clientHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
-
-const activeModels = [];
-const modelCache = {};
-let isEngineRunning = true;
-let isDeleteModeActive = false;
-
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
-
-// --- 2. CONTROLS INTERFACING (ORBIT & GIZMO) ---
-const orbitControls = new OrbitControls(camera, renderer.domElement);
-orbitControls.enableDamping = true;
-
-const transformControl = new TransformControls(camera, renderer.domElement);
-transformControl.addEventListener('dragging-changed', (event) => {
-    orbitControls.enabled = !event.value;
-});
-scene.add(transformControl);
-
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-scene.add(ambientLight);
-
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
 dirLight.position.set(5, 10, 7);
 dirLight.castShadow = true;
+dirLight.shadow.mapSize.setScalar(2048);
+dirLight.shadow.camera.near = 0.1;
+dirLight.shadow.camera.far  = 50;
 scene.add(dirLight);
-
-const gridHelper = new THREE.GridHelper(20, 20, 0x888888, 0xcccccc);
-scene.add(gridHelper);
-
-const floorPlane = new THREE.Mesh(
-    new THREE.PlaneGeometry(50, 50),
-    new THREE.MeshBasicMaterial({ visible: false })
+// Grid
+scene.add(new THREE.GridHelper(30, 30, 0xaaaaaa, 0xdddddd));
+// Invisible floor for raycasting (place models on it)
+const floorMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(100, 100),
+    new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
 );
-floorPlane.rotation.x = -Math.PI / 2;
-scene.add(floorPlane);
-
+floorMesh.rotation.x = -Math.PI / 2;
+floorMesh.name = '__floor__';
+scene.add(floorMesh);
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. LOADERS
+// ─────────────────────────────────────────────────────────────────────────────
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
-
-const loader = new GLTFLoader();
-loader.setDRACOLoader(dracoLoader);
-
-// --- 3. CACHED ASSET SPAWNING ENGINE ---
-function spawnModel(url) {
-    if (modelCache[url]) {
-        const clonedModel = modelCache[url].clone();
-        clonedModel.position.set(0, 0, 0);
-        clonedModel.rotation.set(0, 0, 0);
-        clonedModel.scale.set(1, 1, 1);
-
-        scene.add(clonedModel);
-        activeModels.push(clonedModel);
-
-        if (!isDeleteModeActive) {
-            transformControl.attach(clonedModel);
-        }
-        return;
-    }
-
-    loader.load(url, (gltf) => {
-        const masterModel = gltf.scene;
-        masterModel.traverse((node) => {
-            if (node.isMesh) {
-                node.castShadow = true;
-                node.receiveShadow = true;
-                node.userData.isInteractable = true;
-            }
-        });
-
-        modelCache[url] = masterModel;
-        const liveModel = masterModel.clone();
-        liveModel.position.set(0, 0, 0);
-
-        scene.add(liveModel);
-        activeModels.push(liveModel);
-
-        if (!isDeleteModeActive) {
-            transformControl.attach(liveModel);
-        }
-    }, undefined, (error) => console.error('Error parsing production file asset:', error));
-}
-
-// --- 4. EXPLICIT DELETION ENGINE ---
-function deleteTargetObject(targetObject) {
-    if (!targetObject) return;
-
-    if (transformControl.object === targetObject) {
-        transformControl.detach();
-    }
-
-    scene.remove(targetObject);
-
-    targetObject.traverse((node) => {
+const gltfLoader = new GLTFLoader();
+gltfLoader.setDRACOLoader(dracoLoader);
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. CONTROLS
+// ─────────────────────────────────────────────────────────────────────────────
+const orbitControls = new OrbitControls(camera, renderer.domElement);
+orbitControls.enableDamping  = true;
+orbitControls.dampingFactor  = 0.08;
+orbitControls.target.set(0, 0, 0);
+const transformControls = new TransformControls(camera, renderer.domElement);
+transformControls.setMode('translate');
+scene.add(transformControls);
+// Pause orbit while the gizmo is being dragged
+transformControls.addEventListener('dragging-changed', (e) => {
+    orbitControls.enabled = !e.value;
+});
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. STATE
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Each entry: { mesh: THREE.Object3D, glbUrl: string, usdzUrl: string|null }
+ */
+const activeModels = [];
+/**
+ * Cache: glbUrl → THREE.Object3D (master copy, NEVER added to scene)
+ */
+const modelCache = {};
+let currentTool = 'translate'; // 'translate' | 'rotate' | 'delete'
+let animating   = true;
+let rafId       = null;
+const raycaster = new THREE.Raycaster();
+const pointer   = new THREE.Vector2();
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. SPAWN / DELETE
+// ─────────────────────────────────────────────────────────────────────────────
+function prepareMaster(root) {
+    root.traverse((node) => {
         if (node.isMesh) {
-            node.geometry.dispose();
-            if (Array.isArray(node.material)) {
-                node.material.forEach(mat => mat.dispose());
-            } else {
-                node.material.dispose();
-            }
+            node.castShadow    = true;
+            node.receiveShadow = true;
         }
     });
-
-    const index = activeModels.indexOf(targetObject);
-    if (index > -1) activeModels.splice(index, 1);
 }
-
-// --- 5. INTERACTION EVENT LISTENERS & TOUCH OPTIMIZATION ---
-function handleSceneInteraction(clientX, clientY) {
-    if (transformControl.axis !== null && !isDeleteModeActive) return;
-
+/**
+ * Clone the cached master and place it at the origin.
+ * Clones share geometry/material references — efficient for multiple instances.
+ */
+function spawnFromCache(glbUrl, usdzUrl) {
+    const mesh = modelCache[glbUrl].clone();
+    mesh.position.set(0, 0, 0);
+    mesh.rotation.set(0, 0, 0);
+    mesh.scale.set(1, 1, 1);
+    scene.add(mesh);
+    activeModels.push({ mesh, glbUrl, usdzUrl: usdzUrl ?? null });
+    if (currentTool !== 'delete') {
+        transformControls.attach(mesh);
+    }
+}
+/**
+ * Load a GLB from URL, cache it (without adding to scene), then spawn.
+ */
+function spawnModel(glbUrl, usdzUrl) {
+    if (modelCache[glbUrl]) {
+        spawnFromCache(glbUrl, usdzUrl);
+        return;
+    }
+    gltfLoader.load(
+        glbUrl,
+        (gltf) => {
+            prepareMaster(gltf.scene);
+            modelCache[glbUrl] = gltf.scene; // cache master — never scene.add this
+            spawnFromCache(glbUrl, usdzUrl);
+        },
+        undefined,
+        (err) => console.error('[spawnModel] Load error:', err)
+    );
+}
+/**
+ * Remove an entry from the scene and dispose resources if no other
+ * live instances share the same geometry/material.
+ */
+function deleteModel(entry) {
+    if (!entry) return;
+    if (transformControls.object === entry.mesh) {
+        transformControls.detach();
+    }
+    scene.remove(entry.mesh);
+    // Only dispose if this was the last live instance of this model
+    const otherInstances = activeModels.filter(
+        (e) => e !== entry && e.glbUrl === entry.glbUrl
+    ).length;
+    if (otherInstances === 0) {
+        entry.mesh.traverse((node) => {
+            if (!node.isMesh) return;
+            node.geometry?.dispose();
+            const mats = Array.isArray(node.material) ? node.material : [node.material];
+            mats.forEach((m) => m?.dispose());
+        });
+    }
+    const idx = activeModels.indexOf(entry);
+    if (idx !== -1) activeModels.splice(idx, 1);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. RAYCASTING / INTERACTION
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Returns the activeModels entry hit by a ray from (clientX, clientY),
+ * or null if nothing was hit.
+ */
+function pickEntry(clientX, clientY) {
     const rect = renderer.domElement.getBoundingClientRect();
-    mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObjects(activeModels, true);
-
-    if (intersects.length > 0) {
-        let root = intersects[0].object;
-        while (root.parent && root.parent !== scene) {
-            root = root.parent;
-        }
-
-        if (isDeleteModeActive) {
-            deleteTargetObject(root);
-        } else {
-            transformControl.attach(root);
-        }
+    pointer.x  =  ((clientX - rect.left) / rect.width)  * 2 - 1;
+    pointer.y  = -((clientY - rect.top)  / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const meshes = activeModels.map((e) => e.mesh);
+    const hits   = raycaster.intersectObjects(meshes, true);
+    if (hits.length === 0) return null;
+    // Walk up from the hit node to the direct scene child
+    let node = hits[0].object;
+    while (node.parent && node.parent !== scene) node = node.parent;
+    return activeModels.find((e) => e.mesh === node) ?? null;
+}
+function handlePointerDown(clientX, clientY) {
+    // Don't interfere with an active gizmo drag
+    if (transformControls.dragging) return;
+    const entry = pickEntry(clientX, clientY);
+    if (currentTool === 'delete') {
+        if (entry) deleteModel(entry);
+        return;
+    }
+    if (entry) {
+        transformControls.attach(entry.mesh);
     } else {
-        if (!isDeleteModeActive) {
-            transformControl.detach();
-        }
+        transformControls.detach();
     }
 }
-
-window.addEventListener('mousedown', (e) => {
-    if (e.target.closest('#canvas-container')) {
-        handleSceneInteraction(e.clientX, e.clientY);
-    }
+// Use the canvas element so touch events don't bubble through the sidebar
+renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return; // left-click / tap only
+    handlePointerDown(e.clientX, e.clientY);
 });
-
-window.addEventListener('touchstart', (e) => {
-    if (e.target.closest('#canvas-container') && e.touches.length === 1) {
-        handleSceneInteraction(e.touches[0].clientX, e.touches[0].clientY);
-    }
+renderer.domElement.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
 }, { passive: true });
-
-// --- TOOLBAR CONTROLS SYNC ENGINE ---
-document.getElementById('tool-translate').addEventListener('click', (e) => {
-    isDeleteModeActive = false;
-    transformControl.visible = true;
-    transformControl.setMode('translate');
-    setActiveToolButton(e.target);
-});
-
-document.getElementById('tool-rotate').addEventListener('click', (e) => {
-    isDeleteModeActive = false;
-    transformControl.visible = true;
-    transformControl.setMode('rotate');
-    setActiveToolButton(e.target);
-});
-
-document.getElementById('tool-delete').addEventListener('click', (e) => {
-    isDeleteModeActive = true;
-    transformControl.detach();
-    transformControl.visible = false;
-    setActiveToolButton(e.target);
-});
-
-function setActiveToolButton(targetButton) {
-    document.getElementById('tool-translate').classList.remove('active-tool');
-    document.getElementById('tool-rotate').classList.remove('active-tool');
-    document.getElementById('tool-delete').classList.remove('active-tool');
-    targetButton.classList.add('active-tool');
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. TOOLBAR  (matches existing HTML IDs)
+// ─────────────────────────────────────────────────────────────────────────────
+const btnTranslate = document.getElementById('tool-translate');
+const btnRotate    = document.getElementById('tool-rotate');
+const btnDelete    = document.getElementById('tool-delete');
+const btnFreeze    = document.getElementById('freeze-btn');
+const btnAR        = document.getElementById('view-ar-btn');
+function setTool(tool) {
+    currentTool = tool;
+    // Reset all tool buttons
+    [btnTranslate, btnRotate, btnDelete].forEach((btn) => {
+        btn.classList.remove('active-tool');
+    });
+    if (tool === 'translate') {
+        btnTranslate.classList.add('active-tool');
+        transformControls.visible = true;
+        transformControls.setMode('translate');
+    } else if (tool === 'rotate') {
+        btnRotate.classList.add('active-tool');
+        transformControls.visible = true;
+        transformControls.setMode('rotate');
+    } else if (tool === 'delete') {
+        btnDelete.classList.add('active-tool');
+        transformControls.detach();
+        transformControls.visible = false;
+    }
 }
-
+btnTranslate.addEventListener('click', () => setTool('translate'));
+btnRotate.addEventListener('click',    () => setTool('rotate'));
+btnDelete.addEventListener('click',    () => setTool('delete'));
+// Freeze / Resume
+btnFreeze.addEventListener('click', () => {
+    animating = !animating;
+    btnFreeze.textContent = animating ? '🛑 FREEZE ENGINE' : '▶️ RESUME ENGINE';
+    btnFreeze.style.backgroundColor = animating ? '' : '#34c759';
+    if (animating) startLoop();
+});
+// Keyboard shortcuts
 window.addEventListener('keydown', (e) => {
     if (document.activeElement.tagName === 'INPUT') return;
     switch (e.key.toLowerCase()) {
         case 't':
-            isDeleteModeActive = false;
-            transformControl.visible = true;
-            transformControl.setMode('translate');
-            setActiveToolButton(document.getElementById('tool-translate'));
+            setTool('translate');
             break;
         case 'r':
-            isDeleteModeActive = false;
-            transformControl.visible = true;
-            transformControl.setMode('rotate');
-            setActiveToolButton(document.getElementById('tool-rotate'));
+            setTool('rotate');
             break;
         case 'delete':
-        case 'backspace':
+        case 'backspace': {
             e.preventDefault();
-            deleteTargetObject(transformControl.object);
+            const attached = transformControls.object;
+            if (!attached) return;
+            const entry = activeModels.find((en) => en.mesh === attached);
+            if (entry) deleteModel(entry);
             break;
+        }
     }
 });
-
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. AR  —  uses the <model-viewer> already in the HTML
+// ─────────────────────────────────────────────────────────────────────────────
+const arViewer = document.getElementById('hidden-ar-viewer');
+const isIOS    = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+const isAndroid = /Android/i.test(navigator.userAgent);
+/**
+ * iOS: set the model-viewer src/ios-src and call activateAR().
+ * model-viewer handles the rel="ar" anchor internally — this works
+ * inside a user-gesture (button click).
+ */
+function openARiOS(glbUrl, usdzUrl) {
+    if (!usdzUrl) {
+        alert('No USDZ file is available for this model.');
+        return;
+    }
+    arViewer.src    = glbUrl;
+    arViewer.iosSrc = usdzUrl;
+    // activateAR() must be called synchronously within the click handler
+    // model-viewer will trigger Quick Look automatically
+    arViewer.activateAR();
+}
+/**
+ * Android: export the full arranged scene as a single GLB,
+ * upload to Firebase, then open via Scene Viewer intent URL.
+ */
+async function exportAndOpenAndroid() {
+    const originalLabel = btnAR.textContent;
+    btnAR.textContent = '⏳ Exporting…';
+    btnAR.disabled = true;
+    try {
+        // Build an export group with world-space transforms baked in
+        const exportGroup = new THREE.Group();
+        activeModels.forEach(({ mesh }) => {
+            mesh.updateWorldMatrix(true, true);
+            const clone = mesh.clone(true);
+            // Decompose world matrix into the clone's local transform
+            mesh.matrixWorld.decompose(clone.position, clone.quaternion, clone.scale);
+            exportGroup.add(clone);
+        });
+        const exporter = new GLTFExporter();
+        const arrayBuffer = await exporter.parseAsync(exportGroup, {
+            binary:       true,
+            onlyVisible:  true,
+            animations:   [],
+        });
+        const blob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
+        console.log(`[AR] GLB size: ${(blob.size / 1024 / 1024).toFixed(2)} MB`);
+        const filename   = `ar_scene_${Date.now()}.glb`;
+        const storageRef = ref(storage, `models/temp_stages/${filename}`);
+        const task       = uploadBytesResumable(storageRef, blob);
+        await new Promise((resolve, reject) => task.on('state_changed', null, reject, resolve));
+        const glbUrl  = await getDownloadURL(task.snapshot.ref);
+        const encoded = encodeURIComponent(glbUrl);
+        const fallback = encodeURIComponent(window.location.href);
+        // Scene Viewer intent — requires browser_fallback_url for devices without ARCore
+        window.location.href =
+            `intent://arvr.google.com/scene-viewer/1.0` +
+            `?file=${encoded}&mode=ar_only` +
+            `#Intent;scheme=https;package=com.google.ar.core;` +
+            `action=android.intent.action.VIEW;` +
+            `S.browser_fallback_url=${fallback};end;`;
+    } catch (err) {
+        console.error('[AR] Export error:', err);
+        alert('AR export failed. See console for details.');
+    } finally {
+        btnAR.textContent = originalLabel;
+        btnAR.disabled = false;
+    }
+}
+btnAR.addEventListener('click', () => {
+    if (activeModels.length === 0) {
+        alert('Add at least one model to the scene first.');
+        return;
+    }
+    if (isIOS) {
+        // Quick Look: use the most recently placed model's USDZ.
+        // (iOS Quick Look cannot composite multiple USDZ files in-browser.)
+        const last = activeModels[activeModels.length - 1];
+        openARiOS(last.glbUrl, last.usdzUrl);
+    } else {
+        // Android + Desktop: export scene GLB and launch Scene Viewer / download
+        exportAndOpenAndroid();
+    }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. FIREBASE CATALOG
+// ─────────────────────────────────────────────────────────────────────────────
+const firebaseConfig = {
+    apiKey:            'AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY',
+    authDomain:        'shot47-database.firebaseapp.com',
+    projectId:         'shot47-database',
+    storageBucket:     'shot47-database.firebasestorage.app',
+    messagingSenderId: '77237094269',
+    appId:             '1:77237094269:web:a90a6c6239cb66e3102e14',
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const db          = getFirestore(firebaseApp);
+const storage     = getStorage(firebaseApp);
+const registry = { furniture: [], carpet: [], decor: [] };
+let activeCategory = 'furniture';
+const collectionMap = {
+    furniture: 'furniture_models',
+    carpet:    'carpet_models',
+    decor:     'decor_models',
+};
+/**
+ * Resolve a Storage filename or a full https:// URL to a signed download URL.
+ */
+async function resolveUrl(pathOrUrl, folder) {
+    if (!pathOrUrl) throw new Error('No path provided');
+    if (pathOrUrl.startsWith('http')) return pathOrUrl;
+    return getDownloadURL(ref(storage, `${folder}/${pathOrUrl}`));
+}
+/**
+ * Render the catalog grid using the existing CSS classes from staging.css.
+ */
+function renderCatalog(category) {
+    const list   = document.getElementById('catalog-list');
+    list.innerHTML = '';
+    const assets = registry[category] ?? [];
+    if (assets.length === 0) {
+        list.innerHTML = '<div class="empty-notice">Loading catalog…</div>';
+        return;
+    }
+    assets.forEach((asset) => {
+        // Matches the existing .catalog-item.visual-card structure in staging.css
+        const card = document.createElement('div');
+        card.className = 'catalog-item visual-card state-loading';
+        card.innerHTML = `
+            <div class="thumb-wrapper">
+                <img class="catalog-thumb" alt="${asset.title}" />
+            </div>
+            <div class="card-meta">
+                <span>${asset.title}</span>
+            </div>
+        `;
+        list.appendChild(card);
+        const img = card.querySelector('.catalog-thumb');
+        // ── Thumbnail ──────────────────────────────────────────
+        if (asset.imgName) {
+            resolveUrl(asset.imgName, 'models/thumbnails')
+                .then((url) => { img.src = url; })
+                .catch(() => { /* leave blank — no broken-image icon */ });
+        }
+        // ── GLB + USDZ URLs ────────────────────────────────────
+        const glbPromise  = resolveUrl(asset.glbName,  'models/glb');
+        const usdzPromise = asset.usdzName
+            ? resolveUrl(asset.usdzName, 'models/usdz')
+            : Promise.resolve(null);
+        Promise.all([glbPromise, usdzPromise])
+            .then(([glbUrl, usdzUrl]) => {
+                card.classList.remove('state-loading');
+                card.addEventListener('click', () => spawnModel(glbUrl, usdzUrl));
+            })
+            .catch(() => {
+                card.classList.remove('state-loading');
+                card.classList.add('error-state');
+                card.title = 'Asset unavailable';
+            });
+    });
+}
+function initCatalogSync() {
+    Object.entries(collectionMap).forEach(([category, collectionName]) => {
+        onSnapshot(collection(db, collectionName), (snapshot) => {
+            registry[category] = [];
+            snapshot.forEach((doc) => {
+                const d = doc.data();
+                if (!d.glb) return; // skip docs without a GLB
+                registry[category].push({
+                    title:    d.title   ?? 'Unnamed',
+                    glbName:  d.glb,
+                    usdzName: d.usdz    ?? null,
+                    imgName:  d.img     ?? null,
+                });
+            });
+            if (category === activeCategory) renderCatalog(activeCategory);
+        });
+    });
+}
+// Category tab switching — matches existing .tab-btn[data-category] HTML
+document.querySelectorAll('.tab-btn[data-category]').forEach((tab) => {
+    tab.addEventListener('click', (e) => {
+        document.querySelectorAll('.tab-btn[data-category]').forEach((t) =>
+            t.classList.remove('active')
+        );
+        e.currentTarget.classList.add('active');
+        activeCategory = e.currentTarget.dataset.category;
+        renderCatalog(activeCategory);
+    });
+});
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. RENDER LOOP
+// ─────────────────────────────────────────────────────────────────────────────
+function startLoop() {
+    if (rafId !== null) return; // guard — only one loop ever runs
+    (function loop() {
+        if (!animating) { rafId = null; return; }
+        rafId = requestAnimationFrame(loop);
+        orbitControls.update();
+        renderer.render(scene, camera);
+    })();
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// 11. RESIZE
+// ─────────────────────────────────────────────────────────────────────────────
 window.addEventListener('resize', () => {
     camera.aspect = container.clientWidth / container.clientHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(container.clientWidth, container.clientHeight);
 });
-
-// --- 6. DYNAMIC FIREBASE STREAMING SIDEBAR GALLERY ---
-const firebaseConfig = {
-    apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
-    authDomain: "shot47-database.firebaseapp.com",
-    projectId: "shot47-database",
-    storageBucket: "shot47-database.firebasestorage.app",
-    messagingSenderId: "77237094269",
-    appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const storage = getStorage(app);
-
-let liveAssetRegistry = { furniture: [], carpet: [], decor: [] };
-let currentActiveCategory = 'furniture';
-
-const collectionMap = {
-    furniture: 'furniture_models',
-    carpet: 'carpet_models',
-    decor: 'decor_models'
-};
-
-function initLiveCatalogSync() {
-    Object.keys(collectionMap).forEach((categoryKey) => {
-        const firestoreCollection = collection(db, collectionMap[categoryKey]);
-        onSnapshot(firestoreCollection, (snapshot) => {
-            liveAssetRegistry[categoryKey] = [];
-            snapshot.forEach((doc) => {
-                const data = doc.data();
-                if (data.glb) {
-                    liveAssetRegistry[categoryKey].push({
-                        title: data.title || "Unnamed Object",
-                        fileName: data.glb,
-                        imgName: data.img || ""
-                    });
-                }
-            });
-            if (categoryKey === currentActiveCategory) {
-                renderCatalog(currentActiveCategory);
-            }
-        });
-    });
-}
-
-function renderCatalog(category) {
-    const catalogContainer = document.getElementById('catalog-list');
-    catalogContainer.innerHTML = '';
-
-    const assets = liveAssetRegistry[category] || [];
-    if (assets.length === 0) {
-        catalogContainer.innerHTML = `<div class="empty-notice">Updating digital catalog...</div>`;
-        return;
-    }
-
-    assets.forEach((asset) => {
-        const card = document.createElement('div');
-        card.className = 'catalog-item visual-card state-loading';
-        card.innerHTML = `
-            <div class="thumb-wrapper">
-                <img class="catalog-thumb opacity-0" alt="${asset.title}" />
-            </div>
-            <div class="card-meta"><span>${asset.title}</span></div>
-        `;
-        catalogContainer.appendChild(card);
-
-        const imgElement = card.querySelector('.catalog-thumb');
-
-        if (asset.imgName) {
-            if (asset.imgName.startsWith('http')) {
-                imgElement.src = asset.imgName;
-                imgElement.classList.remove('opacity-0');
-            } else {
-                const thumbStorageRef = ref(storage, `models/thumbnails/${asset.imgName}`);
-                getDownloadURL(thumbStorageRef)
-                    .then((url) => {
-                        imgElement.src = url;
-                        imgElement.classList.remove('opacity-0');
-                    })
-                    .catch(() => {
-                        imgElement.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=150&q=80";
-                        imgElement.classList.remove('opacity-0');
-                    });
-            }
-        }
-
-        const glbStorageRef = ref(storage, `models/glb/${asset.fileName}`);
-        getDownloadURL(glbStorageRef)
-            .then((secureUrl) => {
-                card.classList.remove('state-loading');
-                card.addEventListener('click', () => spawnModel(secureUrl));
-            })
-            .catch(() => {
-                card.classList.add('error-state');
-            });
-    });
-}
-
-document.querySelectorAll('.tab-btn').forEach(tab => {
-    tab.addEventListener('click', (e) => {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        e.target.classList.add('active');
-        currentActiveCategory = e.target.getAttribute('data-category');
-        renderCatalog(currentActiveCategory);
-    });
-});
-
-// --- 7. GLTF-TRANSFORM EXPORT PIPELINE ---
-function exportSceneToAR() {
-    if (activeModels.length === 0) {
-        return alert("Your staging floor is empty. Add models before viewing in AR.");
-    }
-
-    const arButton = document.getElementById('view-ar-btn');
-    const originalText = arButton.textContent;
-    arButton.textContent = "⚡ OPTIMIZING...";
-    arButton.disabled = true;
-
-    // Models sit directly under `scene` (not nested in another group), so their
-    // local transforms already equal their world transforms. Cloning as-is is correct;
-    // do NOT re-apply matrices here or you'll double-transform them.
-    const exportScene = new THREE.Scene();
-
-    activeModels.forEach((model) => {
-        const modelClone = model.clone(true);
-
-        modelClone.traverse((node) => {
-            if (node.isMesh) {
-                node.castShadow = false;
-                node.receiveShadow = false;
-                if (node.material) {
-                    if (Array.isArray(node.material)) {
-                        node.material.forEach(mat => { mat.userData = {}; });
-                    } else {
-                        node.material.userData = {};
-                    }
-                }
-            }
-        });
-        exportScene.add(modelClone);
-    });
-
-    const exporter = new GLTFExporter();
-    const exportOptions = { binary: true, animations: [], includeCustomExtensions: false, onlyVisible: true };
-
-    exporter.parse(
-        exportScene,
-        async function (gltf) {
-            try {
-                arButton.textContent = "⚙️ RE-PACKING...";
-
-                const io = new WebIO();
-                const doc = await io.readBinary(new Uint8Array(gltf));
-
-                await doc.transform(
-                    dedup(),
-                    prune(),
-                    weld({ tolerance: 0.0001 }),
-                    resample()
-                );
-
-                const optimizedGlbArray = await io.writeBinary(doc);
-
-                const blob = new Blob([optimizedGlbArray], { type: 'model/gltf+binary' });
-
-                const tempFilename = `scene_${Date.now()}.glb`;
-                const storagePathRef = ref(storage, `models/temp_stages/${tempFilename}`);
-
-                const metadata = {
-                    contentType: 'model/gltf+binary',
-                    cacheControl: 'public, max-age=31536000'
-                };
-
-                const uploadTask = uploadBytesResumable(storagePathRef, blob, metadata);
-
-                uploadTask.on('state_changed',
-                    null,
-                    (error) => {
-                        console.error("Upload error:", error);
-                        arButton.textContent = originalText;
-                        arButton.disabled = false;
-                        alert("Cloud sync failure during compilation.");
-                    },
-                    async () => {
-                        const secureCloudUrl = await getDownloadURL(uploadTask.snapshot.ref);
-
-                        arButton.textContent = originalText;
-                        arButton.disabled = false;
-
-                        const isIOS = navigator.userAgent.match(/iPhone|iPad|iPod/i);
-                        const isAndroid = navigator.userAgent.match(/Android/i);
-
-                        if (isIOS) {
-                            // IMPORTANT: Apple's AR Quick Look only accepts USDZ (or .reality)
-                            // files — it will silently refuse a GLB. <model-viewer> does NOT
-                            // auto-convert GLB -> USDZ; it needs a real `ios-src` pointing at
-                            // an already-converted USDZ file. Until this pipeline produces one
-                            // server-side (e.g. a Cloud Function running a USDZ converter),
-                            // AR will not launch on iOS. Failing loudly here instead of
-                            // silently, so it's obvious rather than looking like "nothing
-                            // happened":
-                            const mv = document.getElementById('hidden-ar-viewer');
-                            if (mv && mv.iosSrc) {
-                                mv.src = secureCloudUrl;
-                                mv.addEventListener('load', () => {
-                                    mv.activateAR();
-                                }, { once: true });
-                            } else {
-                                alert(
-                                    "AR Quick Look on iOS needs a USDZ file, not a GLB. " +
-                                    "This scene was exported as GLB only — add a GLB→USDZ " +
-                                    "conversion step and set the viewer's ios-src to the " +
-                                    "converted file to enable iOS AR."
-                                );
-                            }
-
-                        } else if (isAndroid) {
-                            const safeUrl = encodeURIComponent(secureCloudUrl);
-                            const fallbackUrl = encodeURIComponent(secureCloudUrl);
-
-                            // Standard Scene Viewer intent format — file param is just the
-                            // encoded URL, nothing appended to it.
-                            const intentString =
-                                `intent://arvr.google.com/scene-viewer/1.0?file=${safeUrl}&mode=ar_only` +
-                                `#Intent;scheme=https;package=com.google.android.googlequicksearchbox;` +
-                                `action=android.intent.action.VIEW;` +
-                                `S.browser_fallback_url=${fallbackUrl};end;`;
-
-                            const link = document.createElement('a');
-                            link.href = intentString;
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
-
-                        } else {
-                            // Desktop fallback: download
-                            const link = document.createElement('a');
-                            link.href = secureCloudUrl;
-                            link.download = tempFilename;
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
-                        }
-                    }
-                );
-            } catch (transformError) {
-                console.error("gltf-transform execution runtime failure:", transformError);
-                arButton.textContent = originalText;
-                arButton.disabled = false;
-                alert("Internal compiler error optimizing structural geometry elements.");
-            }
-        },
-        exportOptions
-    );
-}
-
-document.getElementById('view-ar-btn').addEventListener('click', exportSceneToAR);
-
-// --- 8. ANIMATION LOOP ---
-function animate() {
-    if (!isEngineRunning) return;
-    requestAnimationFrame(animate);
-    orbitControls.update();
-    renderer.render(scene, camera);
-}
-
-document.getElementById('freeze-btn').addEventListener('click', (e) => {
-    isEngineRunning = !isEngineRunning;
-    e.target.textContent = isEngineRunning ? "🛑 FREEZE ENGINE" : "▶️ RESUME ENGINE";
-    e.target.style.backgroundColor = isEngineRunning ? "#ff3b30" : "#34c759";
-    if (isEngineRunning) animate();
-});
-
-initLiveCatalogSync();
-animate();
+// ─────────────────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────────────────
+initCatalogSync();
+setTool('translate');
+startLoop();
