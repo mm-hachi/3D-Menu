@@ -16,26 +16,77 @@ body {
     width: 100vw;
 }
 
-/* --- Responsive Mobile Core Layout Adjustments --- */
-@media (max-width: 768px) {
-    body {
-        flex-direction: column-reverse; /* Puts the 3D canvas on top and controls at the bottom */
-    }
-    
-    #sidebar {
-        width: 100% !important;
-        height: 50vh !important; /* Splits the screen precisely on mobile frames */
-        border-right: none !important;
-        border-top: 1px solid #d2d2d7;
-    }
-}
-
-/* --- Master WebGL 3D Canvas Container --- */
+/* --- Master WebGL Workspace Container Viewport --- */
 #canvas-container {
     flex: 1;
     height: 100%;
     position: relative;
     outline: none;
+}
+
+/* --- Floating Quick-Action Mobile HUD Toolbar --- */
+#mobile-transform-toolbar {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    display: flex;
+    background-color: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 6px;
+    border-radius: 16px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    gap: 6px;
+    align-items: center;
+    width: calc(100% - 40px);
+    max-width: 480px;
+}
+
+.tool-btn {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 10px 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 10px;
+    color: #515154;
+    white-space: nowrap;
+    text-align: center;
+}
+
+.tool-btn.active-tool {
+    background-color: #ffffff;
+    color: #007aff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.tool-btn.delete-tool {
+    color: #ff3b30;
+}
+.tool-btn.delete-tool:active {
+    background-color: rgba(255, 59, 48, 0.1);
+}
+
+/* Unified Floating Engine AR Trigger Action Link Button */
+.btn-ar {
+    flex: 2;
+    background-color: #007aff;
+    color: #ffffff;
+    border: none;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    box-shadow: 0 4px 10px rgba(0, 122, 255, 0.15);
+    white-space: nowrap;
+}
+.btn-ar:active {
+    background-color: #0066cc;
 }
 
 /* --- Control Management Panel Sidebar --- */
@@ -50,8 +101,7 @@ body {
     gap: 16px;
     z-index: 10;
     box-shadow: 2px 0 12px rgba(0, 0, 0, 0.03);
-    overflow-y: auto; /* ENABLES MAIN SIDEBAR SCROLLING ON MOBILE */
-    -webkit-overflow-scrolling: touch;
+    overflow-y: auto;
 }
 
 h2 {
@@ -71,10 +121,8 @@ h2 {
     border: 0;
     border-top: 1px solid #e5e5ea;
     margin: 4px 0;
-    flex-shrink: 0;
 }
 
-/* --- Navigation Links --- */
 .back-link {
     display: inline-flex;
     align-items: center;
@@ -83,15 +131,8 @@ h2 {
     color: #86868b;
     text-decoration: none;
     padding: 4px 0;
-    transition: color 0.2s ease;
-    flex-shrink: 0;
 }
 
-.back-link:hover {
-    color: #007aff;
-}
-
-/* --- Category Filter Tab Matrix --- */
 #category-tabs {
     display: flex;
     gap: 4px;
@@ -99,7 +140,6 @@ h2 {
     padding: 4px;
     border-radius: 10px;
     border: 1px solid #e5e5ea;
-    flex-shrink: 0;
 }
 
 .tab-btn {
@@ -111,12 +151,6 @@ h2 {
     color: #515154;
     border-radius: 7px;
     border: none;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.tab-btn:hover {
-    color: #1d1d1f;
 }
 
 .tab-btn.active {
@@ -125,26 +159,14 @@ h2 {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
 }
 
-/* --- Visual Grid & Graphic Cards --- */
 #catalog-list {
     flex-grow: 1;
-    overflow-y: auto; /* INTERNAL LIST SCROLLING */
+    overflow-y: auto;
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
     padding-right: 4px;
-    min-height: 180px; /* Ensures space on tight mobile layouts */
-}
-
-#catalog-list::-webkit-scrollbar {
-    width: 5px;
-}
-#catalog-list::-webkit-scrollbar-track {
-    background: transparent;
-}
-#catalog-list::-webkit-scrollbar-thumb {
-    background: #d2d2d7;
-    border-radius: 10px;
+    min-height: 200px;
 }
 
 .catalog-item.visual-card {
@@ -156,13 +178,6 @@ h2 {
     border: 1px solid #d2d2d7;
     border-radius: 12px;
     position: relative;
-    cursor: pointer;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.catalog-item.visual-card:hover {
-    border-color: #86868b;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.04);
 }
 
 .thumb-wrapper {
@@ -170,18 +185,12 @@ h2 {
     height: 80px;
     background-color: #f5f5f7;
     overflow: hidden;
-    position: relative;
 }
 
 .catalog-thumb {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: opacity 0.3s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.catalog-item.visual-card:hover .catalog-thumb {
-    transform: scale(1.05);
 }
 
 .card-meta {
@@ -202,10 +211,8 @@ h2 {
     overflow: hidden;
     text-overflow: ellipsis;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
 }
 
-/* --- Control UI Hints Panel --- */
 #controls-hint {
     background-color: #f5f5f7;
     border-radius: 12px;
@@ -213,19 +220,6 @@ h2 {
     font-size: 0.78rem;
     color: #515154;
     line-height: 1.5;
-    flex-shrink: 0;
-}
-
-#controls-hint p {
-    margin-bottom: 6px;
-    color: #1d1d1f;
-}
-
-#controls-hint ul {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
 }
 
 kbd {
@@ -234,17 +228,6 @@ kbd {
     border-radius: 4px;
     padding: 1px 4px;
     font-size: 0.7rem;
-    font-family: inherit;
-    font-weight: 600;
-    box-shadow: 0 1px 0 rgba(0,0,0,0.1);
-}
-
-/* --- System Framework Core Buttons --- */
-button {
-    font-family: inherit;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
 }
 
 .btn-danger {
@@ -256,38 +239,27 @@ button {
     font-size: 0.8rem;
     font-weight: 600;
 }
-.btn-danger:hover {
-    background-color: #e0352b;
+
+/* --- Responsive Media Breakdown --- */
+@media (max-width: 768px) {
+    body {
+        flex-direction: column-reverse;
+    }
+    #sidebar {
+        width: 100%;
+        height: 42vh;
+        border-right: none;
+        border-top: 1px solid #d2d2d7;
+        padding: 16px;
+    }
+    #controls-hint {
+        display: none; /* Hide keyboard shortcut guidelines on touch devices */
+    }
+    #mobile-transform-toolbar {
+        bottom: calc(42vh + 16px); /* Keeps floating UI docked directly above mobile split viewport area */
+    }
 }
 
-.btn-ar {
-    background-color: #007aff;
-    color: #ffffff;
-    border: none;
-    border-radius: 12px;
-    padding: 14px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.2);
-}
-.btn-ar:hover {
-    background-color: #0066cc;
-    box-shadow: 0 6px 16px rgba(0, 122, 255, 0.3);
-}
-
-/* --- Operational Utility States --- */
-.state-loading {
-    opacity: 0.6;
-    pointer-events: none;
-}
-.error-state {
-    border-color: #ff3b30 !important;
-}
-.empty-notice {
-    grid-column: span 2;
-    text-align: center;
-    font-size: 0.78rem;
-    color: #86868b;
-    padding: 40px 10px;
-}
+.state-loading { opacity: 0.6; pointer-events: none; }
+.error-state { border-color: #ff3b30 !important; }
+.empty-notice { grid-column: span 2; text-align: center; font-size: 0.78rem; color: #86868b; padding: 40px 10px; }
