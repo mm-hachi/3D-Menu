@@ -9,7 +9,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebas
 import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { getStorage, ref, getDownloadURL, uploadBytesResumable } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
-// 🚀 INJECTING GLTF-TRANSFORM RUNTIME ENGINES FOR REAL-TIME STREAM OPTIMIZATION
+// gltf-transform runtime for post-export optimization
 import { WebIO } from 'https://esm.sh/@gltf-transform/core';
 import { prune, dedup, weld, resample } from 'https://esm.sh/@gltf-transform/functions';
 
@@ -28,9 +28,9 @@ renderer.shadowMap.enabled = true;
 container.appendChild(renderer.domElement);
 
 const activeModels = [];
-const modelCache = {}; 
+const modelCache = {};
 let isEngineRunning = true;
-let isDeleteModeActive = false; 
+let isDeleteModeActive = false;
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -79,7 +79,7 @@ function spawnModel(url) {
 
         scene.add(clonedModel);
         activeModels.push(clonedModel);
-        
+
         if (!isDeleteModeActive) {
             transformControl.attach(clonedModel);
         }
@@ -92,7 +92,7 @@ function spawnModel(url) {
             if (node.isMesh) {
                 node.castShadow = true;
                 node.receiveShadow = true;
-                node.userData.isInteractable = true; 
+                node.userData.isInteractable = true;
             }
         });
 
@@ -136,7 +136,7 @@ function deleteTargetObject(targetObject) {
 
 // --- 5. INTERACTION EVENT LISTENERS & TOUCH OPTIMIZATION ---
 function handleSceneInteraction(clientX, clientY) {
-    if (transformControl.axis !== null && !isDeleteModeActive) return; 
+    if (transformControl.axis !== null && !isDeleteModeActive) return;
 
     const rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
@@ -178,7 +178,7 @@ window.addEventListener('touchstart', (e) => {
 // --- TOOLBAR CONTROLS SYNC ENGINE ---
 document.getElementById('tool-translate').addEventListener('click', (e) => {
     isDeleteModeActive = false;
-    transformControl.visible = true; 
+    transformControl.visible = true;
     transformControl.setMode('translate');
     setActiveToolButton(e.target);
 });
@@ -192,7 +192,7 @@ document.getElementById('tool-rotate').addEventListener('click', (e) => {
 
 document.getElementById('tool-delete').addEventListener('click', (e) => {
     isDeleteModeActive = true;
-    transformControl.detach(); 
+    transformControl.detach();
     transformControl.visible = false;
     setActiveToolButton(e.target);
 });
@@ -247,13 +247,12 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-// ✅ CORRECTED UNIFORM KEYMAPPING: Shifted carpets -> carpet
 let liveAssetRegistry = { furniture: [], carpet: [], decor: [] };
 let currentActiveCategory = 'furniture';
 
 const collectionMap = {
     furniture: 'furniture_models',
-    carpet: 'carpet_models', // Fixed database context tracking hook
+    carpet: 'carpet_models',
     decor: 'decor_models'
 };
 
@@ -264,7 +263,7 @@ function initLiveCatalogSync() {
             liveAssetRegistry[categoryKey] = [];
             snapshot.forEach((doc) => {
                 const data = doc.data();
-                if (data.glb) { 
+                if (data.glb) {
                     liveAssetRegistry[categoryKey].push({
                         title: data.title || "Unnamed Object",
                         fileName: data.glb,
@@ -281,7 +280,7 @@ function initLiveCatalogSync() {
 
 function renderCatalog(category) {
     const catalogContainer = document.getElementById('catalog-list');
-    catalogContainer.innerHTML = ''; 
+    catalogContainer.innerHTML = '';
 
     const assets = liveAssetRegistry[category] || [];
     if (assets.length === 0) {
@@ -341,7 +340,7 @@ document.querySelectorAll('.tab-btn').forEach(tab => {
     });
 });
 
-// --- 7. ADVANCED GLTF-TRANSFORM EXPORT PIPELINE ENGINE ---
+// --- 7. GLTF-TRANSFORM EXPORT PIPELINE ---
 function exportSceneToAR() {
     if (activeModels.length === 0) {
         return alert("Your staging floor is empty. Add models before viewing in AR.");
@@ -352,14 +351,14 @@ function exportSceneToAR() {
     arButton.textContent = "⚡ OPTIMIZING...";
     arButton.disabled = true;
 
-    // Create a pristine staging environment for extraction
+    // Models sit directly under `scene` (not nested in another group), so their
+    // local transforms already equal their world transforms. Cloning as-is is correct;
+    // do NOT re-apply matrices here or you'll double-transform them.
     const exportScene = new THREE.Scene();
 
     activeModels.forEach((model) => {
-        // FIX 1: Simply clone and add. Do NOT run applyMatrix4 here. Since models sit directly 
-        // in the root scene, their local matrices are already correct. Compounding them warps the geometry.
         const modelClone = model.clone(true);
-        
+
         modelClone.traverse((node) => {
             if (node.isMesh) {
                 node.castShadow = false;
@@ -379,31 +378,25 @@ function exportSceneToAR() {
     const exporter = new GLTFExporter();
     const exportOptions = { binary: true, animations: [], includeCustomExtensions: false, onlyVisible: true };
 
-    console.log("📐 Compiling raw WebGL staging scene array...");
     exporter.parse(
         exportScene,
         async function (gltf) {
             try {
                 arButton.textContent = "⚙️ RE-PACKING...";
-                console.log("⚙️ Ingesting raw uncompressed buffer into gltf-transform runtime...");
-                
+
                 const io = new WebIO();
                 const doc = await io.readBinary(new Uint8Array(gltf));
 
-                console.log("⚡ Executing structural transformation optimization scripts...");
                 await doc.transform(
-                    dedup(),                    
-                    prune(),                    
-                    weld({ tolerance: 0.0001 }), 
-                    resample()                  
+                    dedup(),
+                    prune(),
+                    weld({ tolerance: 0.0001 }),
+                    resample()
                 );
 
-                console.log("💾 Rewriting clean, optimized structural GLB stream...");
                 const optimizedGlbArray = await io.writeBinary(doc);
-                
+
                 const blob = new Blob([optimizedGlbArray], { type: 'model/gltf+binary' });
-                const fileSizeInMB = (blob.size / (1024 * 1024)).toFixed(2);
-                console.log(`📦 Highly Optimized AR File Size: ${fileSizeInMB} MB`);
 
                 const tempFilename = `scene_${Date.now()}.glb`;
                 const storagePathRef = ref(storage, `models/temp_stages/${tempFilename}`);
@@ -413,20 +406,19 @@ function exportSceneToAR() {
                     cacheControl: 'public, max-age=31536000'
                 };
 
-                console.log("☁️ Dispatching pristine asset payload to Firebase cloud architecture...");
                 const uploadTask = uploadBytesResumable(storagePathRef, blob, metadata);
 
-                uploadTask.on('state_changed', 
-                    null, 
+                uploadTask.on('state_changed',
+                    null,
                     (error) => {
                         console.error("Upload error:", error);
                         arButton.textContent = originalText;
                         arButton.disabled = false;
                         alert("Cloud sync failure during compilation.");
-                    }, 
+                    },
                     async () => {
                         const secureCloudUrl = await getDownloadURL(uploadTask.snapshot.ref);
-                        
+
                         arButton.textContent = originalText;
                         arButton.disabled = false;
 
@@ -434,25 +426,40 @@ function exportSceneToAR() {
                         const isAndroid = navigator.userAgent.match(/Android/i);
 
                         if (isIOS) {
-                            // FIX 2: Route the verified GLB token directly into the client-side bridge.
-                            // The component handles building the USDZ structure instantly inside Safari.
+                            // IMPORTANT: Apple's AR Quick Look only accepts USDZ (or .reality)
+                            // files — it will silently refuse a GLB. <model-viewer> does NOT
+                            // auto-convert GLB -> USDZ; it needs a real `ios-src` pointing at
+                            // an already-converted USDZ file. Until this pipeline produces one
+                            // server-side (e.g. a Cloud Function running a USDZ converter),
+                            // AR will not launch on iOS. Failing loudly here instead of
+                            // silently, so it's obvious rather than looking like "nothing
+                            // happened":
                             const mv = document.getElementById('hidden-ar-viewer');
-                            if (mv) {
+                            if (mv && mv.iosSrc) {
                                 mv.src = secureCloudUrl;
                                 mv.addEventListener('load', () => {
                                     mv.activateAR();
                                 }, { once: true });
                             } else {
-                                alert("AR Bridge element missing from interface.");
+                                alert(
+                                    "AR Quick Look on iOS needs a USDZ file, not a GLB. " +
+                                    "This scene was exported as GLB only — add a GLB→USDZ " +
+                                    "conversion step and set the viewer's ios-src to the " +
+                                    "converted file to enable iOS AR."
+                                );
                             }
 
                         } else if (isAndroid) {
-                            // FIX 3: Double-encode the internal query tokens (%26 and %25) and swap the 
-                            // target package string to Google's standard Quick Search Box intent parser.
                             const safeUrl = encodeURIComponent(secureCloudUrl);
-                            
-                            // Appending %26file%3D.glb at the internal end satisfies Scene Viewer's path parser extensions
-                            const intentString = `intent://arvr.google.com/scene-viewer/1.0?file=${safeUrl}%26file%3D.glb&mode=ar_only#Intent;scheme=https;package=com.google.android.googlequicksearchbox;action=android.intent.action.VIEW;end;`;
+                            const fallbackUrl = encodeURIComponent(secureCloudUrl);
+
+                            // Standard Scene Viewer intent format — file param is just the
+                            // encoded URL, nothing appended to it.
+                            const intentString =
+                                `intent://arvr.google.com/scene-viewer/1.0?file=${safeUrl}&mode=ar_only` +
+                                `#Intent;scheme=https;package=com.google.android.googlequicksearchbox;` +
+                                `action=android.intent.action.VIEW;` +
+                                `S.browser_fallback_url=${fallbackUrl};end;`;
 
                             const link = document.createElement('a');
                             link.href = intentString;
@@ -461,7 +468,7 @@ function exportSceneToAR() {
                             document.body.removeChild(link);
 
                         } else {
-                            // Desktop Fallback Download
+                            // Desktop fallback: download
                             const link = document.createElement('a');
                             link.href = secureCloudUrl;
                             link.download = tempFilename;
@@ -482,10 +489,9 @@ function exportSceneToAR() {
     );
 }
 
-// 🔗 Strict Event Binding Connection Hook
 document.getElementById('view-ar-btn').addEventListener('click', exportSceneToAR);
 
-// --- 8. ANIMATION ENGINE RUNTIME TRACKING ---
+// --- 8. ANIMATION LOOP ---
 function animate() {
     if (!isEngineRunning) return;
     requestAnimationFrame(animate);
