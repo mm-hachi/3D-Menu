@@ -386,31 +386,36 @@ function exportSceneToAR() {
                 arButton.textContent = "⚙️ RE-PACKING...";
                 console.log("⚙️ Ingesting raw uncompressed buffer into gltf-transform runtime...");
                 
-                // Initialize the gltf-transform system inside the browser context
                 const io = new WebIO();
                 const doc = await io.readBinary(new Uint8Array(gltf));
 
                 console.log("⚡ Executing structural transformation optimization scripts...");
-                // Execute optimization routines to aggressively crunch mesh size down
                 await doc.transform(
-                    dedup(),                    // Merges matching texture sheets and geometry allocations
-                    prune(),                    // Removes loose channels and zeroed transformations
-                    weld({ tolerance: 0.0001 }), // Glues matching node edges to rebuild clean element matrices
-                    resample()                  // Drops unneeded animation tracking hierarchies
+                    dedup(),                    
+                    prune(),                    
+                    weld({ tolerance: 0.0001 }), 
+                    resample()                  
                 );
 
                 console.log("💾 Rewriting clean, optimized structural GLB stream...");
                 const optimizedGlbArray = await io.writeBinary(doc);
                 
-                const blob = new Blob([optimizedGlbArray], { type: 'application/octet-stream' });
+                // 🛠️ FIX 1: Explicitly label the blob payload as an official GLB asset model
+                const blob = new Blob([optimizedGlbArray], { type: 'model/gltf+binary' });
                 const fileSizeInMB = (blob.size / (1024 * 1024)).toFixed(2);
                 console.log(`📦 Highly Optimized AR File Size: ${fileSizeInMB} MB`);
 
                 const tempFilename = `scene_${Date.now()}.glb`;
                 const storagePathRef = ref(storage, `models/temp_stages/${tempFilename}`);
 
+                // 🛠️ FIX 2: Force Firebase to serve this file to Safari/Chrome with the correct HTTP content headers
+                const metadata = {
+                    contentType: 'model/gltf+binary',
+                    cacheControl: 'public, max-age=31536000'
+                };
+
                 console.log("☁️ Dispatching pristine asset payload to Firebase cloud architecture...");
-                const uploadTask = uploadBytesResumable(storagePathRef, blob);
+                const uploadTask = uploadBytesResumable(storagePathRef, blob, metadata);
 
                 uploadTask.on('state_changed', 
                     null, 
@@ -432,12 +437,15 @@ function exportSceneToAR() {
                         document.body.appendChild(link);
 
                         if (isIOS) {
+                            // The direct asset URL combined with the content-type metadata bypasses Quick Look structural rejections
                             link.href = `${secureCloudUrl}&file=.glb`;
                             link.rel = "ar";
                             const img = document.createElement('img');
                             link.appendChild(img);
                         } else if (navigator.userAgent.match(/Android/i)) {
-                            link.href = `intent://arvr.google.com/scene-viewer/1.0?file=${secureCloudUrl}&mode=ar_only#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;end;`;
+                            // 🛠️ FIX 3: Fully escape the security tokens so Android passes the complete unbroken URL string to Scene Viewer
+                            const safeAndroidUrl = encodeURIComponent(secureCloudUrl);
+                            link.href = `intent://arvr.google.com/scene-viewer/1.0?file=${safeAndroidUrl}&mode=ar_only#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;end;`;
                         } else {
                             link.href = secureCloudUrl;
                             link.download = tempFilename;
