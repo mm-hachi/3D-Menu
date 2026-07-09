@@ -1,0 +1,250 @@
+/* --- Core Viewport Properties --- */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body,
+html {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #f5f5f7;
+    color: #1d1d1f;
+}
+
+#app-container {
+    display: flex;
+    width: 100vw;
+    height: 100vh;
+}
+
+/* --- Three.js WebGL Canvas Mount --- */
+#canvas-container {
+    flex-grow: 1;
+    height: 100%;
+    position: relative;
+    outline: none;
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* --- Control Management Panel Layout --- */
+#sidebar {
+    width: 340px;
+    height: 100%;
+    background-color: #ffffff;
+    border-right: 1px solid #d2d2d7;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    overflow-y: auto;
+    z-index: 10;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
+}
+
+h2 {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #1d1d1f;
+}
+
+h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #86868b;
+    margin-bottom: 8px;
+}
+
+.divider {
+    border: none;
+    border-top: 1px solid #e5e5ea;
+    margin: 5px 0;
+}
+
+/* --- Interactive Elements & Forms --- */
+.form-group {
+    background-color: #f5f5f7;
+    padding: 14px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+input[type="text"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #d2d2d7;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    background-color: #ffffff;
+    color: #1d1d1f;
+    transition: border-color 0.2s ease;
+}
+
+input[type="text"]:focus {
+    outline: none;
+    border-color: #007aff;
+}
+
+/* --- System UI Button Classes --- */
+button {
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 10px 14px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+button:active {
+    transform: scale(0.98);
+}
+
+.btn-primary {
+    background-color: #007aff;
+    color: #ffffff;
+}
+
+.btn-primary:hover {
+    background-color: #0051a8;
+}
+
+.btn-danger {
+    background-color: #ff3b30;
+    color: #ffffff;
+    width: 100%;
+    padding: 12px;
+}
+
+.btn-danger:hover {
+    background-color: #d7261e;
+}
+
+/* --- File Processing Inputs --- */
+.control-group input[type="file"] {
+    display: none;
+}
+
+.custom-file-upload {
+    display: block;
+    text-align: center;
+    background-color: #34c759;
+    color: #ffffff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.custom-file-upload:hover {
+    background-color: #248a3d;
+}
+
+/* --- Dynamic Listing Asset Container --- */
+#catalog-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    /* Split into two equal, wide columns */
+    gap: 10px;
+    flex-grow: 1;
+    /* Force it to take up all remaining vertical space */
+    min-height: 250px;
+    /* Ensures it never shrinks below a usable workspace */
+    max-height: 450px;
+    /* Allows plenty of vertical headroom before scrolling */
+    overflow-y: auto;
+    border: 1px solid #e5e5ea;
+    border-radius: 8px;
+    padding: 12px;
+    background-color: #f5f5f7;
+}
+
+/* Span the section title across both columns so it looks clean */
+#catalog-list h3 {
+    grid-column: span 2;
+    margin-bottom: 4px;
+}
+
+.catalog-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 65px;
+    /* Gives the buttons a substantial touch target */
+    padding: 12px 8px;
+    background-color: #ffffff;
+    border: 1px solid #d2d2d7;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    transition: all 0.2s ease;
+}
+
+.catalog-item:hover {
+    background-color: #ffffff;
+    border-color: #007aff;
+    transform: translateY(-2px);
+    /* Subtle lift effect on hover */
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.15);
+}
+
+/* --- Hotkey Hint Display Subcard --- */
+#controls-hint {
+    margin-top: auto;
+    background-color: #f5f5f7;
+    padding: 14px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: #515154;
+}
+
+#controls-hint p {
+    margin-bottom: 6px;
+    color: #1d1d1f;
+}
+
+#controls-hint ul {
+    list-style-type: none;
+    margin-bottom: 10px;
+}
+
+#controls-hint ul:last-child {
+    margin-bottom: 0;
+}
+
+#controls-hint li {
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+kbd {
+    background-color: #e5e5ea;
+    border-radius: 3px;
+    border: 1px solid #d2d2d7;
+    color: #1d1d1f;
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: bold;
+    padding: 1px 4px;
+    font-family: monospace;
+}

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Spatial Staging Sandbox</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div id="app-container">
+        <div id="sidebar">
+            <button id="freeze-btn" class="btn-danger">🛑 FREEZE ENGINE</button>
+
+            <hr class="divider" />
+
+            <h2>Catalog Manager</h2>
+
+            <div class="control-group">
+                <label for="local-file-input" class="custom-file-upload">
+                    📁 Import Local 3D Asset (.glb)
+                </label>
+                <input type="file" id="local-file-input" accept=".glb" />
+            </div>
+
+            <div class="form-group">
+                <h3>Add Remote URL Asset</h3>
+                <input type="text" id="asset-name-input" placeholder="Asset Name (e.g., Luxury Rug)" />
+                <input type="text" id="asset-url-input" placeholder="Paste .glb CDN URL link here..." />
+                <button id="add-asset-btn" class="btn-primary">Add to Catalog List</button>
+            </div>
+
+            <div id="catalog-list">
+                <h3>Available Staging Assets</h3>
+            </div>
+
+            <div id="controls-hint">
+                <p><strong>Viewport Controls:</strong></p>
+                <ul>
+                    <li>Left-Click + Drag: Orbit Camera</li>
+                    <li>Right-Click + Drag: Pan Space</li>
+                    <li>Scroll / Pinch: Zoom Depth</li>
+                </ul>
+                <p><strong>Transform Gizmo Hotkeys:</strong></p>
+                <ul>
+                    <li><kbd>Left-Click</kbd> Asset: Select & Target</li>
+                    <li><kbd>T</kbd> Key: Toggle <strong>Move Arrows</strong></li>
+                    <li><kbd>R</kbd> Key: Toggle <strong>Rotate Rings</strong></li>
+                    <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>: Drop Target Mesh</li>
+                    <li>Left-Click Void: Clear Selection</li>
+                </ul>
+            </div>
+        </div>
+
+        <div id="canvas-container"></div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/examples/jsm/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module" src="app.js"></script>
+</body>
+
+</html>
