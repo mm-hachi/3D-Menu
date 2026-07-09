@@ -201,7 +201,7 @@ let currentActiveCategory = 'furniture';
 
 const collectionMap = {
     furniture: 'furniture_models',
-    carpets: 'carpets_models',
+    carpets: 'carpet_models',
     decor: 'decor_models'
 };
 
