@@ -453,6 +453,8 @@ function exportSceneToAR() {
         exportOptions
     );
 }
+// 🔗 ADD THIS LINE RIGHT HERE TO BIND THE BUTTON:
+document.getElementById('view-ar-btn').addEventListener('click', exportSceneToAR);
 
 // --- 8. ANIMATION ENGINE RUNTIME TRACKING ---
 function animate() {
