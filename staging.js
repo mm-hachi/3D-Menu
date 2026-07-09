@@ -352,12 +352,13 @@ function exportSceneToAR() {
     arButton.textContent = "⚡ OPTIMIZING...";
     arButton.disabled = true;
 
+    // Create a pristine staging environment for extraction
     const exportScene = new THREE.Scene();
 
     activeModels.forEach((model) => {
+        // FIX 1: Simply clone and add. Do NOT run applyMatrix4 here. Since models sit directly 
+        // in the root scene, their local matrices are already correct. Compounding them warps the geometry.
         const modelClone = model.clone(true);
-        model.updateMatrixWorld(true);
-        modelClone.applyMatrix4(model.matrixWorld);
         
         modelClone.traverse((node) => {
             if (node.isMesh) {
@@ -400,7 +401,6 @@ function exportSceneToAR() {
                 console.log("💾 Rewriting clean, optimized structural GLB stream...");
                 const optimizedGlbArray = await io.writeBinary(doc);
                 
-                // 🛠️ FIX 1: Explicitly label the blob payload as an official GLB asset model
                 const blob = new Blob([optimizedGlbArray], { type: 'model/gltf+binary' });
                 const fileSizeInMB = (blob.size / (1024 * 1024)).toFixed(2);
                 console.log(`📦 Highly Optimized AR File Size: ${fileSizeInMB} MB`);
@@ -408,7 +408,6 @@ function exportSceneToAR() {
                 const tempFilename = `scene_${Date.now()}.glb`;
                 const storagePathRef = ref(storage, `models/temp_stages/${tempFilename}`);
 
-                // 🛠️ FIX 2: Force Firebase to serve this file to Safari/Chrome with the correct HTTP content headers
                 const metadata = {
                     contentType: 'model/gltf+binary',
                     cacheControl: 'public, max-age=31536000'
@@ -432,27 +431,44 @@ function exportSceneToAR() {
                         arButton.disabled = false;
 
                         const isIOS = navigator.userAgent.match(/iPhone|iPad|iPod/i);
-                        const link = document.createElement('a');
-                        link.style.display = 'none';
-                        document.body.appendChild(link);
+                        const isAndroid = navigator.userAgent.match(/Android/i);
 
                         if (isIOS) {
-                            // The direct asset URL combined with the content-type metadata bypasses Quick Look structural rejections
-                            link.href = `${secureCloudUrl}&file=.glb`;
-                            link.rel = "ar";
-                            const img = document.createElement('img');
-                            link.appendChild(img);
-                        } else if (navigator.userAgent.match(/Android/i)) {
-                            // 🛠️ FIX 3: Fully escape the security tokens so Android passes the complete unbroken URL string to Scene Viewer
-                            const safeAndroidUrl = encodeURIComponent(secureCloudUrl);
-                            link.href = `intent://arvr.google.com/scene-viewer/1.0?file=${safeAndroidUrl}&mode=ar_only#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;end;`;
+                            // FIX 2: Route the verified GLB token directly into the client-side bridge.
+                            // The component handles building the USDZ structure instantly inside Safari.
+                            const mv = document.getElementById('hidden-ar-viewer');
+                            if (mv) {
+                                mv.src = secureCloudUrl;
+                                mv.addEventListener('load', () => {
+                                    mv.activateAR();
+                                }, { once: true });
+                            } else {
+                                alert("AR Bridge element missing from interface.");
+                            }
+
+                        } else if (isAndroid) {
+                            // FIX 3: Double-encode the internal query tokens (%26 and %25) and swap the 
+                            // target package string to Google's standard Quick Search Box intent parser.
+                            const safeUrl = encodeURIComponent(secureCloudUrl);
+                            
+                            // Appending %26file%3D.glb at the internal end satisfies Scene Viewer's path parser extensions
+                            const intentString = `intent://arvr.google.com/scene-viewer/1.0?file=${safeUrl}%26file%3D.glb&mode=ar_only#Intent;scheme=https;package=com.google.android.googlequicksearchbox;action=android.intent.action.VIEW;end;`;
+
+                            const link = document.createElement('a');
+                            link.href = intentString;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+
                         } else {
+                            // Desktop Fallback Download
+                            const link = document.createElement('a');
                             link.href = secureCloudUrl;
                             link.download = tempFilename;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
                         }
-
-                        link.click();
-                        document.body.removeChild(link);
                     }
                 );
             } catch (transformError) {
@@ -461,11 +477,6 @@ function exportSceneToAR() {
                 arButton.disabled = false;
                 alert("Internal compiler error optimizing structural geometry elements.");
             }
-        },
-        (error) => {
-            console.error("Parser extraction framework failure:", error);
-            arButton.textContent = originalText;
-            arButton.disabled = false;
         },
         exportOptions
     );
