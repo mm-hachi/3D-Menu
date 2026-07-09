@@ -5,10 +5,10 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 
-// Import Firebase Modular Framework tools
+// Import Firebase Modular Framework tools + Upload Engines
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { getStorage, ref, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+import { getStorage, ref, getDownloadURL, uploadBytesResumable } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
 // --- 1. SETUP ENVIRONMENT & STATE ---
 const container = document.getElementById('canvas-container');
@@ -37,7 +37,7 @@ orbitControls.enableDamping = true;
 
 const transformControl = new TransformControls(camera, renderer.domElement);
 transformControl.addEventListener('dragging-changed', (event) => {
-    orbitControls.enabled = !event.value; // Prevent view collision while transforming assets
+    orbitControls.enabled = !event.value;
 });
 scene.add(transformControl);
 
@@ -132,12 +132,12 @@ function deleteSelectedObject() {
 }
 
 // --- 5. INTERACTION EVENT LISTENERS ---
-window.addEventListener('mousedown', (e) => {
+function handleSelection(clientX, clientY) {
     if (transformControl.axis !== null) return; 
 
     const rect = renderer.domElement.getBoundingClientRect();
-    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
 
     raycaster.setFromCamera(mouse, camera);
     const intersects = raycaster.intersectObjects(activeModels, true);
@@ -151,6 +151,11 @@ window.addEventListener('mousedown', (e) => {
     } else {
         transformControl.detach();
     }
+}
+
+window.addEventListener('mousedown', (e) => handleSelection(e.clientX, e.clientY));
+window.addEventListener('touchstart', (e) => {
+    if(e.touches.length === 1) handleSelection(e.touches[0].clientX, e.touches[0].clientY);
 });
 
 window.addEventListener('keydown', (e) => {
@@ -201,8 +206,6 @@ const collectionMap = {
 };
 
 function initLiveCatalogSync() {
-    console.log("📡 Attaching real-time streaming hooks to all portfolio collections...");
-
     Object.keys(collectionMap).forEach((categoryKey) => {
         const firestoreCollection = collection(db, collectionMap[categoryKey]);
 
@@ -220,11 +223,10 @@ function initLiveCatalogSync() {
                 }
             });
 
-            console.log(`✨ Sync complete for collection profile: ${categoryKey}`);
             if (categoryKey === currentActiveCategory) {
                 renderCatalog(currentActiveCategory);
             }
-        }, (error) => console.error(`Sync error on portfolio group [${categoryKey}]:`, error));
+        });
     });
 }
 
@@ -242,7 +244,6 @@ function renderCatalog(category) {
     assets.forEach((asset) => {
         const card = document.createElement('div');
         card.className = 'catalog-item visual-card state-loading';
-        card.title = asset.title;
         
         card.innerHTML = `
             <div class="thumb-wrapper">
@@ -254,7 +255,6 @@ function renderCatalog(category) {
 
         const imgElement = card.querySelector('.catalog-thumb');
 
-        // Resolve Image Thumbnail File Reference Profile
         if (asset.imgName) {
             if (asset.imgName.startsWith('http')) {
                 imgElement.src = asset.imgName;
@@ -266,23 +266,20 @@ function renderCatalog(category) {
                         imgElement.src = url;
                         imgElement.classList.remove('opacity-0');
                     })
-                    .catch((err) => {
-                        console.error(`Thumbnail path missing reference: ${asset.imgName}`, err);
+                    .catch(() => {
                         imgElement.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=150&q=80";
                         imgElement.classList.remove('opacity-0');
                     });
             }
         }
 
-        // Resolve GLB Run-time Geometry Data Reference
         const glbStorageRef = ref(storage, `models/glb/${asset.fileName}`);
         getDownloadURL(glbStorageRef)
             .then((secureUrl) => {
                 card.classList.remove('state-loading');
                 card.addEventListener('click', () => spawnModel(secureUrl));
             })
-            .catch((err) => {
-                console.error(`Missing runtime asset reference deployment [${asset.title}]:`, err);
+            .catch(() => {
                 card.classList.add('error-state');
             });
     });
@@ -298,11 +295,15 @@ document.querySelectorAll('.tab-btn').forEach(tab => {
     });
 });
 
-// --- 7. AR EXPORT COMPILATION ENGINE ---
+// --- 7. CLOUD AR COMPILER EXPORT ENGINE (FIXED FOR MOBILE) ---
 function exportSceneToAR() {
     if (activeModels.length === 0) {
         return alert("Your staging floor is empty. Add models before viewing in AR.");
     }
+
+    const arButton = document.getElementById('view-ar-btn');
+    arButton.textContent = "⚡ COMPILING SCENE...";
+    arButton.disabled = true;
 
     const exporter = new GLTFExporter();
     const exportGroup = new THREE.Group();
@@ -311,32 +312,63 @@ function exportSceneToAR() {
         exportGroup.add(model.clone());
     });
 
-    console.log("🛠️ Compiling spatial scene layout for AR execution channels...");
-
     exporter.parse(
         exportGroup,
         function (gltf) {
             const blob = new Blob([gltf], { type: 'application/octet-stream' });
-            const blobURL = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.style.display = 'none';
-            document.body.appendChild(link);
-
-            // Direct intent call link targeting Android native Scene Viewer pipelines
-            link.href = `intent://arvr.google.com/scene-viewer/1.0?file=${window.location.origin}/${blobURL}&mode=ar_only#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;end;`;
             
-            // Fallback for desktop configurations
-            if (!navigator.userAgent.match(/Android|iPhone|iPad/i)) {
-                link.href = blobURL;
-                link.download = 'my-staged-scene.glb';
-                console.log("💾 Desktop detected: Downloading compiled room asset schema configuration.");
-            }
+            // Unique filename for this scene arrangement instance
+            const tempFilename = `scene_${Date.now()}.glb`;
+            const storagePathRef = ref(storage, `models/temp_stages/${tempFilename}`);
 
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(blobURL);
+            console.log("☁️ Uploading custom playground configuration data matrix straight to cloud array...");
+            const uploadTask = uploadBytesResumable(storagePathRef, blob);
+
+            uploadTask.on('state_changed', 
+                null, 
+                (error) => {
+                    console.error("Upload error:", error);
+                    arButton.textContent = "📐 VIEW SCENE IN AR";
+                    arButton.disabled = false;
+                    alert("Cloud sync failure during compilation.");
+                }, 
+                async () => {
+                    // Pull the fresh authenticated HTTPS download link back down
+                    const secureCloudUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                    
+                    arButton.textContent = "📐 VIEW SCENE IN AR";
+                    arButton.disabled = false;
+
+                    const isIOS = navigator.userAgent.match(/iPhone|iPad|iPod/i);
+                    const link = document.createElement('a');
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+
+                    if (isIOS) {
+                        // iOS AR Quick Look directly mapping our valid hosted cloud token wrapper channel
+                        link.href = `https://api.shot47-database.firebasestorage.app/v0/b/shot47-database.firebasestorage.app/o/${encodeURIComponent(`models/temp_stages/${tempFilename}`)}?alt=media`;
+                        link.rel = "ar";
+                        const img = document.createElement('img');
+                        link.appendChild(img);
+                    } else if (navigator.userAgent.match(/Android/i)) {
+                        // Android Scene Viewer via clear absolute path routing protocol channel
+                        link.href = `intent://arvr.google.com/scene-viewer/1.0?file=${secureCloudUrl}&mode=ar_only#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;end;`;
+                    } else {
+                        // Desktop Fallback Download configuration matrix
+                        link.href = secureCloudUrl;
+                        link.download = 'my-staged-scene.glb';
+                    }
+
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            );
         },
-        (error) => console.error('An error occurred during scene composition compilation:', error),
+        (error) => {
+            console.error(error);
+            arButton.textContent = "📐 VIEW SCENE IN AR";
+            arButton.disabled = false;
+        },
         { binary: true }
     );
 }
@@ -358,6 +390,6 @@ document.getElementById('freeze-btn').addEventListener('click', (e) => {
     if (isEngineRunning) animate();
 });
 
-// Kickstart Background Event Loops
+// Fire connection engines at program execution setup runtime
 initLiveCatalogSync();
 animate();
