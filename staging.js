@@ -9,6 +9,10 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebas
 import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { getStorage, ref, getDownloadURL, uploadBytesResumable } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
+// 🚀 INJECTING GLTF-TRANSFORM RUNTIME ENGINES FOR REAL-TIME STREAM OPTIMIZATION
+import { WebIO } from 'https://esm.sh/@gltf-transform/core';
+import { prune, dedup, weld, resample } from 'https://esm.sh/@gltf-transform/functions';
+
 // --- 1. SETUP ENVIRONMENT & STATE ---
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
@@ -26,7 +30,7 @@ container.appendChild(renderer.domElement);
 const activeModels = [];
 const modelCache = {}; 
 let isEngineRunning = true;
-let isDeleteModeActive = false; // State flag tracking active mobile removal operations
+let isDeleteModeActive = false; 
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -76,7 +80,6 @@ function spawnModel(url) {
         scene.add(clonedModel);
         activeModels.push(clonedModel);
         
-        // If delete mode is active, do not attach the transform handles
         if (!isDeleteModeActive) {
             transformControl.attach(clonedModel);
         }
@@ -110,7 +113,6 @@ function spawnModel(url) {
 function deleteTargetObject(targetObject) {
     if (!targetObject) return;
 
-    // Clear active transformation wrapper if we are blowing away the current focus target
     if (transformControl.object === targetObject) {
         transformControl.detach();
     }
@@ -134,7 +136,6 @@ function deleteTargetObject(targetObject) {
 
 // --- 5. INTERACTION EVENT LISTENERS & TOUCH OPTIMIZATION ---
 function handleSceneInteraction(clientX, clientY) {
-    // Stop event intersections if user is explicitly engaging the transform gizmo arrows
     if (transformControl.axis !== null && !isDeleteModeActive) return; 
 
     const rect = renderer.domElement.getBoundingClientRect();
@@ -151,10 +152,8 @@ function handleSceneInteraction(clientX, clientY) {
         }
 
         if (isDeleteModeActive) {
-            // Direct immediate execution channel in delete mode
             deleteTargetObject(root);
         } else {
-            // Standard placement transformation focus assignment
             transformControl.attach(root);
         }
     } else {
@@ -193,7 +192,7 @@ document.getElementById('tool-rotate').addEventListener('click', (e) => {
 
 document.getElementById('tool-delete').addEventListener('click', (e) => {
     isDeleteModeActive = true;
-    transformControl.detach(); // Hide gizmo handles while deletion operations are hot
+    transformControl.detach(); 
     transformControl.visible = false;
     setActiveToolButton(e.target);
 });
@@ -248,12 +247,13 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-let liveAssetRegistry = { furniture: [], carpets: [], decor: [] };
+// ✅ CORRECTED UNIFORM KEYMAPPING: Shifted carpets -> carpet
+let liveAssetRegistry = { furniture: [], carpet: [], decor: [] };
 let currentActiveCategory = 'furniture';
 
 const collectionMap = {
     furniture: 'furniture_models',
-    carpets: 'carpet_models',
+    carpet: 'carpet_models', // Fixed database context tracking hook
     decor: 'decor_models'
 };
 
@@ -341,7 +341,7 @@ document.querySelectorAll('.tab-btn').forEach(tab => {
     });
 });
 
-// --- 7. OPTIMIZED CLOUD AR COMPILER EXPORT ENGINE ---
+// --- 7. ADVANCED GLTF-TRANSFORM EXPORT PIPELINE ENGINE ---
 function exportSceneToAR() {
     if (activeModels.length === 0) {
         return alert("Your staging floor is empty. Add models before viewing in AR.");
@@ -352,101 +352,107 @@ function exportSceneToAR() {
     arButton.textContent = "⚡ OPTIMIZING...";
     arButton.disabled = true;
 
-    // Create a pristine, isolated staging scene completely free of WebGL workspace extras
     const exportScene = new THREE.Scene();
 
     activeModels.forEach((model) => {
-        // Create a deep structural clone of the active asset
         const modelClone = model.clone(true);
-        
-        // Ensure standard world matrix positioning is baked flat into the asset root
         model.updateMatrixWorld(true);
         modelClone.applyMatrix4(model.matrixWorld);
         
-        // Strip out hidden analytical components that choke mobile engines
         modelClone.traverse((node) => {
             if (node.isMesh) {
                 node.castShadow = false;
                 node.receiveShadow = false;
-                
                 if (node.material) {
                     if (Array.isArray(node.material)) {
-                        node.material.forEach(mat => {
-                            mat.userData = {}; // Purge cached client-side attributes
-                        });
+                        node.material.forEach(mat => { mat.userData = {}; });
                     } else {
                         node.material.userData = {};
                     }
                 }
             }
         });
-
         exportScene.add(modelClone);
     });
 
     const exporter = new GLTFExporter();
-    
-    const exportOptions = {
-        binary: true,                 // Force strict standard GLB output format
-        animations: [],               // Strip out empty tracking layers
-        includeCustomExtensions: false, // Drop temporary browser attributes
-        onlyVisible: true             // Only process compiled physical assets
-    };
+    const exportOptions = { binary: true, animations: [], includeCustomExtensions: false, onlyVisible: true };
 
-    console.log("📐 Exporting stripped, mobile-ready layout matrix...");
+    console.log("📐 Compiling raw WebGL staging scene array...");
     exporter.parse(
         exportScene,
-        function (gltf) {
-            const blob = new Blob([gltf], { type: 'application/octet-stream' });
-            
-            // 📊 FILE SIZE MONITOR: Check your browser developer console to see the real size!
-            const fileSizeInMB = (blob.size / (1024 * 1024)).toFixed(2);
-            console.log(`📦 Actual Exported AR File Size: ${fileSizeInMB} MB`);
+        async function (gltf) {
+            try {
+                arButton.textContent = "⚙️ RE-PACKING...";
+                console.log("⚙️ Ingesting raw uncompressed buffer into gltf-transform runtime...");
+                
+                // Initialize the gltf-transform system inside the browser context
+                const io = new WebIO();
+                const doc = await io.readBinary(new Uint8Array(gltf));
 
-            const tempFilename = `scene_${Date.now()}.glb`;
-            const storagePathRef = ref(storage, `models/temp_stages/${tempFilename}`);
+                console.log("⚡ Executing structural transformation optimization scripts...");
+                // Execute optimization routines to aggressively crunch mesh size down
+                await doc.transform(
+                    dedup(),                    // Merges matching texture sheets and geometry allocations
+                    prune(),                    // Removes loose channels and zeroed transformations
+                    weld({ tolerance: 0.0001 }), // Glues matching node edges to rebuild clean element matrices
+                    resample()                  // Drops unneeded animation tracking hierarchies
+                );
 
-            console.log("☁️ Dispatching clean asset payload to Firebase cloud architecture...");
-            const uploadTask = uploadBytesResumable(storagePathRef, blob);
+                console.log("💾 Rewriting clean, optimized structural GLB stream...");
+                const optimizedGlbArray = await io.writeBinary(doc);
+                
+                const blob = new Blob([optimizedGlbArray], { type: 'application/octet-stream' });
+                const fileSizeInMB = (blob.size / (1024 * 1024)).toFixed(2);
+                console.log(`📦 Highly Optimized AR File Size: ${fileSizeInMB} MB`);
 
-            uploadTask.on('state_changed', 
-                null, 
-                (error) => {
-                    console.error("Upload error:", error);
-                    arButton.textContent = originalText;
-                    arButton.disabled = false;
-                    alert("Cloud sync failure during compilation.");
-                }, 
-                async () => {
-                    // Use the genuine URL generated by the Firebase SDK
-                    const secureCloudUrl = await getDownloadURL(uploadTask.snapshot.ref);
-                    
-                    arButton.textContent = originalText;
-                    arButton.disabled = false;
+                const tempFilename = `scene_${Date.now()}.glb`;
+                const storagePathRef = ref(storage, `models/temp_stages/${tempFilename}`);
 
-                    const isIOS = navigator.userAgent.match(/iPhone|iPad|iPod/i);
-                    const link = document.createElement('a');
-                    link.style.display = 'none';
-                    document.body.appendChild(link);
+                console.log("☁️ Dispatching pristine asset payload to Firebase cloud architecture...");
+                const uploadTask = uploadBytesResumable(storagePathRef, blob);
 
-                    if (isIOS) {
-                        // Fix: iOS demands a clear file type identifier. Appending &file=.glb tricks Safari 
-                        // into parsing the streaming blob correctly without breaking the Firebase authentication token.
-                        link.href = `${secureCloudUrl}&file=.glb`;
-                        link.rel = "ar";
-                        const img = document.createElement('img');
-                        link.appendChild(img);
-                    } else if (navigator.userAgent.match(/Android/i)) {
-                        link.href = `intent://arvr.google.com/scene-viewer/1.0?file=${secureCloudUrl}&mode=ar_only#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;end;`;
-                    } else {
-                        link.href = secureCloudUrl;
-                        link.download = tempFilename;
+                uploadTask.on('state_changed', 
+                    null, 
+                    (error) => {
+                        console.error("Upload error:", error);
+                        arButton.textContent = originalText;
+                        arButton.disabled = false;
+                        alert("Cloud sync failure during compilation.");
+                    }, 
+                    async () => {
+                        const secureCloudUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                        
+                        arButton.textContent = originalText;
+                        arButton.disabled = false;
+
+                        const isIOS = navigator.userAgent.match(/iPhone|iPad|iPod/i);
+                        const link = document.createElement('a');
+                        link.style.display = 'none';
+                        document.body.appendChild(link);
+
+                        if (isIOS) {
+                            link.href = `${secureCloudUrl}&file=.glb`;
+                            link.rel = "ar";
+                            const img = document.createElement('img');
+                            link.appendChild(img);
+                        } else if (navigator.userAgent.match(/Android/i)) {
+                            link.href = `intent://arvr.google.com/scene-viewer/1.0?file=${secureCloudUrl}&mode=ar_only#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;end;`;
+                        } else {
+                            link.href = secureCloudUrl;
+                            link.download = tempFilename;
+                        }
+
+                        link.click();
+                        document.body.removeChild(link);
                     }
-
-                    link.click();
-                    document.body.removeChild(link);
-                }
-            );
+                );
+            } catch (transformError) {
+                console.error("gltf-transform execution runtime failure:", transformError);
+                arButton.textContent = originalText;
+                arButton.disabled = false;
+                alert("Internal compiler error optimizing structural geometry elements.");
+            }
         },
         (error) => {
             console.error("Parser extraction framework failure:", error);
@@ -457,7 +463,7 @@ function exportSceneToAR() {
     );
 }
 
-// Ensure the button listener is bound right after the function block ends!
+// 🔗 Strict Event Binding Connection Hook
 document.getElementById('view-ar-btn').addEventListener('click', exportSceneToAR);
 
 // --- 8. ANIMATION ENGINE RUNTIME TRACKING ---
