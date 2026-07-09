@@ -5,7 +5,6 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 
-// Import Firebase Framework tools + Upload Engines
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { getStorage, ref, getDownloadURL, uploadBytesResumable } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
@@ -27,6 +26,7 @@ container.appendChild(renderer.domElement);
 const activeModels = [];
 const modelCache = {}; 
 let isEngineRunning = true;
+let isDeleteModeActive = false; // State flag tracking active mobile removal operations
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -41,7 +41,6 @@ transformControl.addEventListener('dragging-changed', (event) => {
 });
 scene.add(transformControl);
 
-// Ambient and Direct Lights
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
 scene.add(ambientLight);
 
@@ -60,7 +59,6 @@ const floorPlane = new THREE.Mesh(
 floorPlane.rotation.x = -Math.PI / 2;
 scene.add(floorPlane);
 
-// Configure Draco Compression Decoder
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
 
@@ -77,7 +75,11 @@ function spawnModel(url) {
 
         scene.add(clonedModel);
         activeModels.push(clonedModel);
-        transformControl.attach(clonedModel);
+        
+        // If delete mode is active, do not attach the transform handles
+        if (!isDeleteModeActive) {
+            transformControl.attach(clonedModel);
+        }
         return;
     }
 
@@ -97,19 +99,25 @@ function spawnModel(url) {
 
         scene.add(liveModel);
         activeModels.push(liveModel);
-        transformControl.attach(liveModel);
+
+        if (!isDeleteModeActive) {
+            transformControl.attach(liveModel);
+        }
     }, undefined, (error) => console.error('Error parsing production file asset:', error));
 }
 
-// --- 4. SELECTION & DELETION LOGIC ---
-function deleteSelectedObject() {
-    const selectedObject = transformControl.object;
-    if (!selectedObject) return;
+// --- 4. EXPLICIT DELETION ENGINE ---
+function deleteTargetObject(targetObject) {
+    if (!targetObject) return;
 
-    transformControl.detach();
-    scene.remove(selectedObject);
+    // Clear active transformation wrapper if we are blowing away the current focus target
+    if (transformControl.object === targetObject) {
+        transformControl.detach();
+    }
 
-    selectedObject.traverse((node) => {
+    scene.remove(targetObject);
+
+    targetObject.traverse((node) => {
         if (node.isMesh) {
             node.geometry.dispose();
             if (Array.isArray(node.material)) {
@@ -120,13 +128,14 @@ function deleteSelectedObject() {
         }
     });
 
-    const index = activeModels.indexOf(selectedObject);
+    const index = activeModels.indexOf(targetObject);
     if (index > -1) activeModels.splice(index, 1);
 }
 
 // --- 5. INTERACTION EVENT LISTENERS & TOUCH OPTIMIZATION ---
-function handleSelection(clientX, clientY) {
-    if (transformControl.axis !== null) return; 
+function handleSceneInteraction(clientX, clientY) {
+    // Stop event intersections if user is explicitly engaging the transform gizmo arrows
+    if (transformControl.axis !== null && !isDeleteModeActive) return; 
 
     const rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
@@ -140,38 +149,59 @@ function handleSelection(clientX, clientY) {
         while (root.parent && root.parent !== scene) {
             root = root.parent;
         }
-        transformControl.attach(root);
+
+        if (isDeleteModeActive) {
+            // Direct immediate execution channel in delete mode
+            deleteTargetObject(root);
+        } else {
+            // Standard placement transformation focus assignment
+            transformControl.attach(root);
+        }
     } else {
-        transformControl.detach();
+        if (!isDeleteModeActive) {
+            transformControl.detach();
+        }
     }
 }
 
-window.addEventListener('mousedown', (e) => handleSelection(e.clientX, e.clientY));
+window.addEventListener('mousedown', (e) => {
+    if (e.target.closest('#canvas-container')) {
+        handleSceneInteraction(e.clientX, e.clientY);
+    }
+});
+
 window.addEventListener('touchstart', (e) => {
-    // Check if user is touching canvas, not sidebar layout elements
-    if(e.target.closest('#canvas-container') && e.touches.length === 1) {
-        handleSelection(e.touches[0].clientX, e.touches[0].clientY);
+    if (e.target.closest('#canvas-container') && e.touches.length === 1) {
+        handleSceneInteraction(e.touches[0].clientX, e.touches[0].clientY);
     }
 }, { passive: true });
 
-// UI Toolbar Click Bindings (Mobile Hotkey Alternatives)
+// --- TOOLBAR CONTROLS SYNC ENGINE ---
 document.getElementById('tool-translate').addEventListener('click', (e) => {
+    isDeleteModeActive = false;
+    transformControl.visible = true; 
     transformControl.setMode('translate');
     setActiveToolButton(e.target);
 });
 
 document.getElementById('tool-rotate').addEventListener('click', (e) => {
+    isDeleteModeActive = false;
+    transformControl.visible = true;
     transformControl.setMode('rotate');
     setActiveToolButton(e.target);
 });
 
-document.getElementById('tool-delete').addEventListener('click', () => {
-    deleteSelectedObject();
+document.getElementById('tool-delete').addEventListener('click', (e) => {
+    isDeleteModeActive = true;
+    transformControl.detach(); // Hide gizmo handles while deletion operations are hot
+    transformControl.visible = false;
+    setActiveToolButton(e.target);
 });
 
 function setActiveToolButton(targetButton) {
     document.getElementById('tool-translate').classList.remove('active-tool');
     document.getElementById('tool-rotate').classList.remove('active-tool');
+    document.getElementById('tool-delete').classList.remove('active-tool');
     targetButton.classList.add('active-tool');
 }
 
@@ -179,17 +209,21 @@ window.addEventListener('keydown', (e) => {
     if (document.activeElement.tagName === 'INPUT') return;
     switch (e.key.toLowerCase()) {
         case 't':
+            isDeleteModeActive = false;
+            transformControl.visible = true;
             transformControl.setMode('translate');
             setActiveToolButton(document.getElementById('tool-translate'));
             break;
         case 'r':
+            isDeleteModeActive = false;
+            transformControl.visible = true;
             transformControl.setMode('rotate');
             setActiveToolButton(document.getElementById('tool-rotate'));
             break;
         case 'delete':
         case 'backspace':
             e.preventDefault();
-            deleteSelectedObject();
+            deleteTargetObject(transformControl.object);
             break;
     }
 });
