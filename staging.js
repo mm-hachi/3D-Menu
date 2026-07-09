@@ -5,7 +5,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 
-// Import Firebase Modular Framework tools + Upload Engines
+// Import Firebase Framework tools + Upload Engines
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { getStorage, ref, getDownloadURL, uploadBytesResumable } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
@@ -41,7 +41,7 @@ transformControl.addEventListener('dragging-changed', (event) => {
 });
 scene.add(transformControl);
 
-// Lighting Matrix
+// Ambient and Direct Lights
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
 scene.add(ambientLight);
 
@@ -70,24 +70,19 @@ loader.setDRACOLoader(dracoLoader);
 // --- 3. CACHED ASSET SPAWNING ENGINE ---
 function spawnModel(url) {
     if (modelCache[url]) {
-        console.log(`🚀 Cache Hit: Re-instancing geometry profile: ${url}`);
         const clonedModel = modelCache[url].clone();
-        
         clonedModel.position.set(0, 0, 0);
         clonedModel.rotation.set(0, 0, 0);
         clonedModel.scale.set(1, 1, 1);
 
         scene.add(clonedModel);
         activeModels.push(clonedModel);
-        
         transformControl.attach(clonedModel);
         return;
     }
 
-    console.log(`📦 Cache Miss: Initializing data stream parsing pipeline: ${url}`);
     loader.load(url, (gltf) => {
         const masterModel = gltf.scene;
-
         masterModel.traverse((node) => {
             if (node.isMesh) {
                 node.castShadow = true;
@@ -97,13 +92,11 @@ function spawnModel(url) {
         });
 
         modelCache[url] = masterModel;
-
         const liveModel = masterModel.clone();
         liveModel.position.set(0, 0, 0);
 
         scene.add(liveModel);
         activeModels.push(liveModel);
-
         transformControl.attach(liveModel);
     }, undefined, (error) => console.error('Error parsing production file asset:', error));
 }
@@ -131,7 +124,7 @@ function deleteSelectedObject() {
     if (index > -1) activeModels.splice(index, 1);
 }
 
-// --- 5. INTERACTION EVENT LISTENERS ---
+// --- 5. INTERACTION EVENT LISTENERS & TOUCH OPTIMIZATION ---
 function handleSelection(clientX, clientY) {
     if (transformControl.axis !== null) return; 
 
@@ -155,18 +148,43 @@ function handleSelection(clientX, clientY) {
 
 window.addEventListener('mousedown', (e) => handleSelection(e.clientX, e.clientY));
 window.addEventListener('touchstart', (e) => {
-    if(e.touches.length === 1) handleSelection(e.touches[0].clientX, e.touches[0].clientY);
+    // Check if user is touching canvas, not sidebar layout elements
+    if(e.target.closest('#canvas-container') && e.touches.length === 1) {
+        handleSelection(e.touches[0].clientX, e.touches[0].clientY);
+    }
+}, { passive: true });
+
+// UI Toolbar Click Bindings (Mobile Hotkey Alternatives)
+document.getElementById('tool-translate').addEventListener('click', (e) => {
+    transformControl.setMode('translate');
+    setActiveToolButton(e.target);
 });
+
+document.getElementById('tool-rotate').addEventListener('click', (e) => {
+    transformControl.setMode('rotate');
+    setActiveToolButton(e.target);
+});
+
+document.getElementById('tool-delete').addEventListener('click', () => {
+    deleteSelectedObject();
+});
+
+function setActiveToolButton(targetButton) {
+    document.getElementById('tool-translate').classList.remove('active-tool');
+    document.getElementById('tool-rotate').classList.remove('active-tool');
+    targetButton.classList.add('active-tool');
+}
 
 window.addEventListener('keydown', (e) => {
     if (document.activeElement.tagName === 'INPUT') return;
-
     switch (e.key.toLowerCase()) {
         case 't':
             transformControl.setMode('translate');
+            setActiveToolButton(document.getElementById('tool-translate'));
             break;
         case 'r':
             transformControl.setMode('rotate');
+            setActiveToolButton(document.getElementById('tool-rotate'));
             break;
         case 'delete':
         case 'backspace':
@@ -201,17 +219,15 @@ let currentActiveCategory = 'furniture';
 
 const collectionMap = {
     furniture: 'furniture_models',
-    carpets: 'carpet_models',
+    carpets: 'carpets_models',
     decor: 'decor_models'
 };
 
 function initLiveCatalogSync() {
     Object.keys(collectionMap).forEach((categoryKey) => {
         const firestoreCollection = collection(db, collectionMap[categoryKey]);
-
         onSnapshot(firestoreCollection, (snapshot) => {
             liveAssetRegistry[categoryKey] = [];
-
             snapshot.forEach((doc) => {
                 const data = doc.data();
                 if (data.glb) { 
@@ -222,7 +238,6 @@ function initLiveCatalogSync() {
                     });
                 }
             });
-
             if (categoryKey === currentActiveCategory) {
                 renderCatalog(currentActiveCategory);
             }
@@ -235,7 +250,6 @@ function renderCatalog(category) {
     catalogContainer.innerHTML = ''; 
 
     const assets = liveAssetRegistry[category] || [];
-
     if (assets.length === 0) {
         catalogContainer.innerHTML = `<div class="empty-notice">Updating digital catalog...</div>`;
         return;
@@ -244,7 +258,6 @@ function renderCatalog(category) {
     assets.forEach((asset) => {
         const card = document.createElement('div');
         card.className = 'catalog-item visual-card state-loading';
-        
         card.innerHTML = `
             <div class="thumb-wrapper">
                 <img class="catalog-thumb opacity-0" alt="${asset.title}" />
@@ -289,20 +302,20 @@ document.querySelectorAll('.tab-btn').forEach(tab => {
     tab.addEventListener('click', (e) => {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         e.target.classList.add('active');
-        
         currentActiveCategory = e.target.getAttribute('data-category');
         renderCatalog(currentActiveCategory);
     });
 });
 
-// --- 7. CLOUD AR COMPILER EXPORT ENGINE (FIXED FOR MOBILE) ---
+// --- 7. CLOUD AR COMPILER EXPORT ENGINE ---
 function exportSceneToAR() {
     if (activeModels.length === 0) {
         return alert("Your staging floor is empty. Add models before viewing in AR.");
     }
 
     const arButton = document.getElementById('view-ar-btn');
-    arButton.textContent = "⚡ COMPILING SCENE...";
+    const originalText = arButton.textContent;
+    arButton.textContent = "⚡ COMPILING...";
     arButton.disabled = true;
 
     const exporter = new GLTFExporter();
@@ -316,27 +329,23 @@ function exportSceneToAR() {
         exportGroup,
         function (gltf) {
             const blob = new Blob([gltf], { type: 'application/octet-stream' });
-            
-            // Unique filename for this scene arrangement instance
             const tempFilename = `scene_${Date.now()}.glb`;
             const storagePathRef = ref(storage, `models/temp_stages/${tempFilename}`);
 
-            console.log("☁️ Uploading custom playground configuration data matrix straight to cloud array...");
             const uploadTask = uploadBytesResumable(storagePathRef, blob);
 
             uploadTask.on('state_changed', 
                 null, 
                 (error) => {
                     console.error("Upload error:", error);
-                    arButton.textContent = "📐 VIEW SCENE IN AR";
+                    arButton.textContent = originalText;
                     arButton.disabled = false;
                     alert("Cloud sync failure during compilation.");
                 }, 
                 async () => {
-                    // Pull the fresh authenticated HTTPS download link back down
                     const secureCloudUrl = await getDownloadURL(uploadTask.snapshot.ref);
                     
-                    arButton.textContent = "📐 VIEW SCENE IN AR";
+                    arButton.textContent = originalText;
                     arButton.disabled = false;
 
                     const isIOS = navigator.userAgent.match(/iPhone|iPad|iPod/i);
@@ -345,16 +354,13 @@ function exportSceneToAR() {
                     document.body.appendChild(link);
 
                     if (isIOS) {
-                        // iOS AR Quick Look directly mapping our valid hosted cloud token wrapper channel
                         link.href = `https://api.shot47-database.firebasestorage.app/v0/b/shot47-database.firebasestorage.app/o/${encodeURIComponent(`models/temp_stages/${tempFilename}`)}?alt=media`;
                         link.rel = "ar";
                         const img = document.createElement('img');
                         link.appendChild(img);
                     } else if (navigator.userAgent.match(/Android/i)) {
-                        // Android Scene Viewer via clear absolute path routing protocol channel
                         link.href = `intent://arvr.google.com/scene-viewer/1.0?file=${secureCloudUrl}&mode=ar_only#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;end;`;
                     } else {
-                        // Desktop Fallback Download configuration matrix
                         link.href = secureCloudUrl;
                         link.download = 'my-staged-scene.glb';
                     }
@@ -366,7 +372,7 @@ function exportSceneToAR() {
         },
         (error) => {
             console.error(error);
-            arButton.textContent = "📐 VIEW SCENE IN AR";
+            arButton.textContent = originalText;
             arButton.disabled = false;
         },
         { binary: true }
@@ -390,6 +396,5 @@ document.getElementById('freeze-btn').addEventListener('click', (e) => {
     if (isEngineRunning) animate();
 });
 
-// Fire connection engines at program execution setup runtime
 initLiveCatalogSync();
 animate();
