@@ -341,7 +341,7 @@ document.querySelectorAll('.tab-btn').forEach(tab => {
     });
 });
 
-// --- 7. CLOUD AR COMPILER EXPORT ENGINE ---
+// --- 7. OPTIMIZED CLOUD AR COMPILER EXPORT ENGINE ---
 function exportSceneToAR() {
     if (activeModels.length === 0) {
         return alert("Your staging floor is empty. Add models before viewing in AR.");
@@ -349,23 +349,62 @@ function exportSceneToAR() {
 
     const arButton = document.getElementById('view-ar-btn');
     const originalText = arButton.textContent;
-    arButton.textContent = "⚡ COMPILING...";
+    arButton.textContent = "⚡ OPTIMIZING...";
     arButton.disabled = true;
 
-    const exporter = new GLTFExporter();
-    const exportGroup = new THREE.Group();
-    
+    // Create a pristine, isolated staging scene completely free of WebGL workspace extras
+    const exportScene = new THREE.Scene();
+
     activeModels.forEach((model) => {
-        exportGroup.add(model.clone());
+        // Create a deep structural clone of the active asset
+        const modelClone = model.clone(true);
+        
+        // Ensure standard world matrix positioning is baked flat into the asset root
+        model.updateMatrixWorld(true);
+        modelClone.applyMatrix4(model.matrixWorld);
+        
+        // Strip out hidden analytical components that choke mobile engines
+        modelClone.traverse((node) => {
+            if (node.isMesh) {
+                // Remove individual local lighting overrides or canvas shadows
+                node.castShadow = false;
+                node.receiveShadow = false;
+                
+                // Ensure standard built-in materials aren't tracking custom WebGL program states
+                if (node.material) {
+                    if (Array.isArray(node.material)) {
+                        node.material.forEach(mat => {
+                            mat.userData = {}; // Purge cached client-side attributes
+                        });
+                    } else {
+                        node.material.userData = {};
+                    }
+                }
+            }
+        });
+
+        exportScene.add(modelClone);
     });
 
+    const exporter = new GLTFExporter();
+    
+    // Strict compilation options to ensure universal compatibility with Google Scene Viewer and Apple Quick Look
+    const exportOptions = {
+        binary: true,                 // Force strict standard GLB output format
+        animations: [],               // Strip out empty tracking layers
+        includeCustomExtensions: false, // Drop temporary browser attributes
+        onlyVisible: true             // Only process compiled physical architecture mesh assets
+    };
+
+    console.log("📐 Exporting stripped, mobile-ready layout matrix...");
     exporter.parse(
-        exportGroup,
+        exportScene,
         function (gltf) {
             const blob = new Blob([gltf], { type: 'application/octet-stream' });
             const tempFilename = `scene_${Date.now()}.glb`;
             const storagePathRef = ref(storage, `models/temp_stages/${tempFilename}`);
 
+            console.log("☁️ Dispatching clean asset payload to Firebase cloud architecture...");
             const uploadTask = uploadBytesResumable(storagePathRef, blob);
 
             uploadTask.on('state_changed', 
@@ -388,11 +427,13 @@ function exportSceneToAR() {
                     document.body.appendChild(link);
 
                     if (isIOS) {
+                        // Safe absolute cloud reference path for Apple's conversion systems
                         link.href = `https://api.shot47-database.firebasestorage.app/v0/b/shot47-database.firebasestorage.app/o/${encodeURIComponent(`models/temp_stages/${tempFilename}`)}?alt=media`;
                         link.rel = "ar";
                         const img = document.createElement('img');
                         link.appendChild(img);
                     } else if (navigator.userAgent.match(/Android/i)) {
+                        // Standard Google Intent structural link
                         link.href = `intent://arvr.google.com/scene-viewer/1.0?file=${secureCloudUrl}&mode=ar_only#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;end;`;
                     } else {
                         link.href = secureCloudUrl;
@@ -405,15 +446,13 @@ function exportSceneToAR() {
             );
         },
         (error) => {
-            console.error(error);
+            console.error("Parser extraction framework failure:", error);
             arButton.textContent = originalText;
             arButton.disabled = false;
         },
-        { binary: true }
+        exportOptions
     );
 }
-
-document.getElementById('view-ar-btn').addEventListener('click', exportSceneToAR);
 
 // --- 8. ANIMATION ENGINE RUNTIME TRACKING ---
 function animate() {
