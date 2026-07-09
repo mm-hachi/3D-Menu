@@ -29,8 +29,7 @@
             <button class="tab-btn" data-category="decor">Decor</button>
         </div>
 
-        <div id="catalog-list">
-            </div>
+        <div id="catalog-list"></div>
 
         <div id="controls-hint">
             <p><strong>Transform Hotkeys:</strong></p>
@@ -41,11 +40,18 @@
                 <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>: Delete Model</li>
             </ul>
         </div>
-        
-        <button id="view-ar-btn" class="btn-ar">📐 VIEW SCENE IN AR</button>
     </div>
 
-    <div id="canvas-container"></div>
+    <div id="canvas-container">
+        
+        <div id="mobile-transform-toolbar">
+            <button id="tool-translate" class="tool-btn active-tool" title="Move Mode">✛ Move</button>
+            <button id="tool-rotate" class="tool-btn" title="Rotate Mode">⟳ Rotate</button>
+            <button id="tool-delete" class="tool-btn delete-tool" title="Delete Model">🗑 Delete</button>
+            <button id="view-ar-btn" class="btn-ar">📐 View Scene in AR</button>
+        </div>
+
+    </div>
 
     <script type="importmap">
         {
