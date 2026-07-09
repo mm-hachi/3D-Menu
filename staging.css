@@ -1,252 +1,59 @@
-/* --- Core Viewport Properties --- */ 
+/* --- Base Reset & Core Layout Structure --- */
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
-body,
-html {
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
+body {
+    font-family: 'Inter', sans-serif;
     background-color: #f5f5f7;
     color: #1d1d1f;
-}
-
-#app-container {
+    overflow: hidden;
     display: flex;
-    width: 100vw;
     height: 100vh;
+    width: 100vw;
 }
 
-/* --- Three.js WebGL Canvas Mount --- */
+/* --- WebGL Workspace Container Viewport --- */
 #canvas-container {
-    flex-grow: 1;
+    flex: 1;
     height: 100%;
     position: relative;
     outline: none;
 }
 
-canvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-}
-
-/* --- Control Management Panel Layout --- */
+/* --- Control Management Panel Sidebar --- */
 #sidebar {
-    width: 340px;
+    width: 320px;
     height: 100%;
     background-color: #ffffff;
     border-right: 1px solid #d2d2d7;
-    padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 18px;
-    overflow-y: auto;
+    padding: 24px;
+    gap: 16px;
     z-index: 10;
-    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.03);
 }
 
 h2 {
-    font-size: 1.3rem;
-    font-weight: 600;
-    color: #1d1d1f;
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.022em;
 }
 
-h3 {
-    font-size: 0.9rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+.subtitle {
+    font-size: 0.8rem;
     color: #86868b;
-    margin-bottom: 8px;
+    margin-top: -6px;
+    line-height: 1.4;
 }
 
 .divider {
-    border: none;
+    border: 0;
     border-top: 1px solid #e5e5ea;
-    margin: 5px 0;
-}
-
-/* --- Interactive Elements & Forms --- */
-.form-group {
-    background-color: #f5f5f7;
-    padding: 14px;
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-input[type="text"] {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #d2d2d7;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    background-color: #ffffff;
-    color: #1d1d1f;
-    transition: border-color 0.2s ease;
-}
-
-input[type="text"]:focus {
-    outline: none;
-    border-color: #007aff;
-}
-
-/* --- System UI Button Classes --- */
-button {
-    font-size: 0.85rem;
-    font-weight: 600;
-    padding: 10px 14px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: background-color 0.2s ease, transform 0.1s ease;
-}
-
-button:active {
-    transform: scale(0.98);
-}
-
-.btn-primary {
-    background-color: #007aff;
-    color: #ffffff;
-}
-
-.btn-primary:hover {
-    background-color: #0051a8;
-}
-
-.btn-danger {
-    background-color: #ff3b30;
-    color: #ffffff;
-    width: 100%;
-    padding: 12px;
-}
-
-.btn-danger:hover {
-    background-color: #d7261e;
-}
-
-/* --- File Processing Inputs --- */
-.control-group input[type="file"] {
-    display: none;
-}
-
-.custom-file-upload {
-    display: block;
-    text-align: center;
-    background-color: #34c759;
-    color: #ffffff;
-    font-size: 0.85rem;
-    font-weight: 600;
-    padding: 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-}
-
-.custom-file-upload:hover {
-    background-color: #248a3d;
-}
-
-/* --- Dynamic Listing Asset Container --- */
-#catalog-list {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    /* Split into two equal, wide columns */
-    gap: 10px;
-    flex-grow: 1;
-    /* Force it to take up all remaining vertical space */
-    min-height: 250px;
-    /* Ensures it never shrinks below a usable workspace */
-    max-height: 450px;
-    /* Allows plenty of vertical headroom before scrolling */
-    overflow-y: auto;
-    border: 1px solid #e5e5ea;
-    border-radius: 8px;
-    padding: 12px;
-    background-color: #f5f5f7;
-}
-
-/* Span the section title across both columns so it looks clean */
-#catalog-list h3 {
-    grid-column: span 2;
-    margin-bottom: 4px;
-}
-
-.catalog-item {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    min-height: 65px;
-    /* Gives the buttons a substantial touch target */
-    padding: 12px 8px;
-    background-color: #ffffff;
-    border: 1px solid #d2d2d7;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-    transition: all 0.2s ease;
-}
-
-.catalog-item:hover {
-    background-color: #ffffff;
-    border-color: #007aff;
-    transform: translateY(-2px);
-    /* Subtle lift effect on hover */
-    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.15);
-}
-
-/* --- Hotkey Hint Display Subcard --- */
-#controls-hint {
-    margin-top: auto;
-    background-color: #f5f5f7;
-    padding: 14px;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    line-height: 1.4;
-    color: #515154;
-}
-
-#controls-hint p {
-    margin-bottom: 6px;
-    color: #1d1d1f;
-}
-
-#controls-hint ul {
-    list-style-type: none;
-    margin-bottom: 10px;
-}
-
-#controls-hint ul:last-child {
-    margin-bottom: 0;
-}
-
-#controls-hint li {
-    margin-bottom: 4px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-kbd {
-    background-color: #e5e5ea;
-    border-radius: 3px;
-    border: 1px solid #d2d2d7;
-    color: #1d1d1f;
-    display: inline-block;
-    font-size: 0.75rem;
-    font-weight: bold;
-    padding: 1px 4px;
-    font-family: monospace;
+    margin: 4px 0;
 }
 
 /* --- Navigation Links --- */
@@ -258,10 +65,207 @@ kbd {
     color: #86868b;
     text-decoration: none;
     padding: 4px 0;
-    margin-bottom: 4px;
     transition: color 0.2s ease;
 }
 
 .back-link:hover {
-    color: #007aff; /* Switches to interactive blue on hover */
+    color: #007aff;
+}
+
+/* --- Category Filter Tab Matrix --- */
+#category-tabs {
+    display: flex;
+    gap: 4px;
+    background-color: #f5f5f7;
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid #e5e5ea;
+}
+
+.tab-btn {
+    flex: 1;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 8px 2px;
+    background-color: transparent;
+    color: #515154;
+    border-radius: 7px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+    color: #1d1d1f;
+}
+
+.tab-btn.active {
+    background-color: #ffffff;
+    color: #007aff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+/* --- Visual Grid & Graphic Cards --- */
+#catalog-list {
+    flex: 1;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    padding-right: 4px;
+}
+
+/* Custom Scrollbar Styling */
+#catalog-list::-webkit-scrollbar {
+    width: 5px;
+}
+#catalog-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+#catalog-list::-webkit-scrollbar-thumb {
+    background: #d2d2d7;
+    border-radius: 10px;
+}
+
+.catalog-item.visual-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 115px;
+    background-color: #ffffff;
+    border: 1px solid #d2d2d7;
+    border-radius: 12px;
+    position: relative;
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.catalog-item.visual-card:hover {
+    border-color: #86868b;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.04);
+}
+
+.thumb-wrapper {
+    width: 100%;
+    height: 80px;
+    background-color: #f5f5f7;
+    overflow: hidden;
+    position: relative;
+}
+
+.catalog-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: opacity 0.3s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.catalog-item.visual-card:hover .catalog-thumb {
+    transform: scale(1.05);
+}
+
+.card-meta {
+    height: 35px;
+    background-color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 6px;
+    border-top: 1px solid #e5e5ea;
+}
+
+.card-meta span {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #1d1d1f;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+/* --- Control UI Hints Panel --- */
+#controls-hint {
+    background-color: #f5f5f7;
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 0.78rem;
+    color: #515154;
+    line-height: 1.5;
+}
+
+#controls-hint p {
+    margin-bottom: 6px;
+    color: #1d1d1f;
+}
+
+#controls-hint ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+kbd {
+    background-color: #ffffff;
+    border: 1px solid #d2d2d7;
+    border-radius: 4px;
+    padding: 1px 4px;
+    font-size: 0.7rem;
+    font-family: inherit;
+    font-weight: 600;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.1);
+}
+
+/* --- System Framework Core Buttons --- */
+button {
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-danger {
+    background-color: #ff3b30;
+    color: #ffffff;
+    border: none;
+    border-radius: 10px;
+    padding: 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+.btn-danger:hover {
+    background-color: #e0352b;
+}
+
+.btn-ar {
+    background-color: #007aff;
+    color: #ffffff;
+    border: none;
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.2);
+}
+.btn-ar:hover {
+    background-color: #0066cc;
+    box-shadow: 0 6px 16px rgba(0, 122, 255, 0.3);
+}
+
+/* --- Operational Utility States --- */
+.state-loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+.error-state {
+    border-color: #ff3b30 !important;
+}
+.empty-notice {
+    grid-column: span 2;
+    text-align: center;
+    font-size: 0.78rem;
+    color: #86868b;
+    padding: 40px 10px;
 }
