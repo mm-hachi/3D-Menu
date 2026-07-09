@@ -11,11 +11,26 @@ body {
     color: #1d1d1f;
     overflow: hidden;
     display: flex;
+    flex-direction: row;
     height: 100vh;
     width: 100vw;
 }
 
-/* --- WebGL Workspace Container Viewport --- */
+/* --- Responsive Mobile Core Layout Adjustments --- */
+@media (max-width: 768px) {
+    body {
+        flex-direction: column-reverse; /* Puts the 3D canvas on top and controls at the bottom */
+    }
+    
+    #sidebar {
+        width: 100% !important;
+        height: 50vh !important; /* Splits the screen precisely on mobile frames */
+        border-right: none !important;
+        border-top: 1px solid #d2d2d7;
+    }
+}
+
+/* --- Master WebGL 3D Canvas Container --- */
 #canvas-container {
     flex: 1;
     height: 100%;
@@ -35,6 +50,8 @@ body {
     gap: 16px;
     z-index: 10;
     box-shadow: 2px 0 12px rgba(0, 0, 0, 0.03);
+    overflow-y: auto; /* ENABLES MAIN SIDEBAR SCROLLING ON MOBILE */
+    -webkit-overflow-scrolling: touch;
 }
 
 h2 {
@@ -54,6 +71,7 @@ h2 {
     border: 0;
     border-top: 1px solid #e5e5ea;
     margin: 4px 0;
+    flex-shrink: 0;
 }
 
 /* --- Navigation Links --- */
@@ -66,6 +84,7 @@ h2 {
     text-decoration: none;
     padding: 4px 0;
     transition: color 0.2s ease;
+    flex-shrink: 0;
 }
 
 .back-link:hover {
@@ -80,6 +99,7 @@ h2 {
     padding: 4px;
     border-radius: 10px;
     border: 1px solid #e5e5ea;
+    flex-shrink: 0;
 }
 
 .tab-btn {
@@ -107,15 +127,15 @@ h2 {
 
 /* --- Visual Grid & Graphic Cards --- */
 #catalog-list {
-    flex: 1;
-    overflow-y: auto;
+    flex-grow: 1;
+    overflow-y: auto; /* INTERNAL LIST SCROLLING */
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
     padding-right: 4px;
+    min-height: 180px; /* Ensures space on tight mobile layouts */
 }
 
-/* Custom Scrollbar Styling */
 #catalog-list::-webkit-scrollbar {
     width: 5px;
 }
@@ -193,6 +213,7 @@ h2 {
     font-size: 0.78rem;
     color: #515154;
     line-height: 1.5;
+    flex-shrink: 0;
 }
 
 #controls-hint p {
@@ -223,6 +244,7 @@ button {
     font-family: inherit;
     cursor: pointer;
     transition: all 0.2s ease;
+    flex-shrink: 0;
 }
 
 .btn-danger {
