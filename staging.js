@@ -75,6 +75,12 @@ orbitControls.enableDamping  = true;
 orbitControls.dampingFactor  = 0.08;
 orbitControls.target.set(0, 0, 0);
 
+// Lock stage rotation so the camera cannot orbit below the grid floor
+orbitControls.maxPolarAngle = Math.PI / 2; 
+
+// Optional: Prevent the user from looking completely straight down (birds-eye lock)
+// orbitControls.minPolarAngle = 0.1; 
+
 const transformControls = new TransformControls(camera, renderer.domElement);
 transformControls.setMode('translate');
 scene.add(transformControls);
@@ -103,6 +109,7 @@ transformControls.addEventListener('change', () => {
         }
     }
 });
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. STATE
 // ─────────────────────────────────────────────────────────────────────────────
