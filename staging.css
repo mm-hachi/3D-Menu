@@ -12,8 +12,10 @@ body {
     overflow: hidden;
     display: flex;
     flex-direction: row;
-    height: 100vh;
     width: 100vw;
+    /* Fixed: Uses dynamic viewport height to prevent browser bar overlap */
+    height: 100vh; 
+    height: 100dvh;
 }
 
 /* --- Master WebGL Workspace Container Viewport --- */
@@ -232,7 +234,7 @@ kbd {
     border: 1px solid #d2d2d7;
     border-radius: 4px;
     padding: 1px 4px;
-    font-size: 0.7rem;
+    font-size: 0.7 classroom;
 }
 
 .btn-danger {
@@ -252,7 +254,8 @@ kbd {
     }
     #sidebar {
         width: 100%;
-        height: 42vh;
+        /* Fixed: Use dynamic viewport height values to handle mobile bottom bars */
+        height: 42dvh;
         border-right: none;
         border-top: 1px solid #d2d2d7;
         padding: 16px;
@@ -261,7 +264,8 @@ kbd {
         display: none;
     }
     #mobile-transform-toolbar {
-        bottom: calc(42vh + 16px);
+        /* Fixed: Calibrated toolbar bottom spacing to match dynamic layout heights */
+        bottom: calc(42dvh + 16px);
     }
 }
 
