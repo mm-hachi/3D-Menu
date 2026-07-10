@@ -276,6 +276,20 @@ function setTool(tool) {
     } else {
         transformControls.visible = true;
         transformControls.setMode(tool);
+
+        // Axis-locking pipeline for floor staging constraints
+        if (tool === 'rotate') {
+            // Lock out pitch and roll; expose only the green horizontal yaw ring
+            transformControls.showX = false;
+            transformControls.showY = true;  // Green axis ring
+            transformControls.showZ = false;
+        } else {
+            // Re-expose all three movement vectors when switching back to translation
+            transformControls.showX = true;
+            transformControls.showY = true;
+            transformControls.showZ = true;
+        }
+
         setActiveToolButton(document.getElementById(
             tool === 'translate' ? 'tool-translate' : 'tool-rotate'
         ));
