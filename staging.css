@@ -3,6 +3,8 @@
     box-sizing: border-box;
     margin: 0;
     padding: 0;
+    /* Removes the translucent blue flash selection overlay on mobile touch inputs */
+    -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -13,9 +15,19 @@ body {
     display: flex;
     flex-direction: row;
     width: 100vw;
-    /* Fixed: Uses dynamic viewport height to prevent browser bar overlap */
-    height: 100vh; 
+    /* Uses Dynamic Viewport Height to automatically adapt to expanding/collapsing mobile browser bars */
+    height: 100vh;
     height: 100dvh;
+}
+
+/* Prevents accidental UI text selections during rapid clicking or drag interactions */
+.tool-btn, 
+.tab-btn, 
+.btn-ar, 
+.btn-danger, 
+#sidebar {
+    -webkit-user-select: none; /* Safari */
+    user-select: none;         /* Standard */
 }
 
 /* --- Master WebGL Workspace Container Viewport --- */
@@ -59,6 +71,7 @@ body {
     white-space: nowrap;
     text-align: center;
     transition: all 0.2s ease;
+    cursor: pointer;
 }
 
 .tool-btn.active-tool {
@@ -91,9 +104,14 @@ body {
     letter-spacing: -0.01em;
     box-shadow: 0 4px 10px rgba(0, 122, 255, 0.15);
     white-space: nowrap;
+    cursor: pointer;
 }
 .btn-ar:active {
     background-color: #0066cc;
+}
+.btn-ar:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 /* --- Control Management Panel Sidebar --- */
@@ -158,6 +176,7 @@ h2 {
     color: #515154;
     border-radius: 7px;
     border: none;
+    cursor: pointer;
 }
 
 .tab-btn.active {
@@ -185,6 +204,7 @@ h2 {
     border: 1px solid #d2d2d7;
     border-radius: 12px;
     position: relative;
+    cursor: pointer;
 }
 
 .thumb-wrapper {
@@ -234,7 +254,7 @@ kbd {
     border: 1px solid #d2d2d7;
     border-radius: 4px;
     padding: 1px 4px;
-    font-size: 0.7 classroom;
+    font-size: 0.7rem;
 }
 
 .btn-danger {
@@ -245,6 +265,7 @@ kbd {
     padding: 10px;
     font-size: 0.8rem;
     font-weight: 600;
+    cursor: pointer;
 }
 
 /* --- Responsive Media Breakdown --- */
@@ -254,7 +275,7 @@ kbd {
     }
     #sidebar {
         width: 100%;
-        /* Fixed: Use dynamic viewport height values to handle mobile bottom bars */
+        /* Adjusted to use dvh to prevent layout clipping beneath the mobile nav footer */
         height: 42dvh;
         border-right: none;
         border-top: 1px solid #d2d2d7;
@@ -264,7 +285,7 @@ kbd {
         display: none;
     }
     #mobile-transform-toolbar {
-        /* Fixed: Calibrated toolbar bottom spacing to match dynamic layout heights */
+        /* Aligns the quick action layout handle directly relative to the active mobile list panel height */
         bottom: calc(42dvh + 16px);
     }
 }
