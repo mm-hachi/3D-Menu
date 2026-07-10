@@ -84,6 +84,25 @@ transformControls.addEventListener('dragging-changed', (e) => {
     orbitControls.enabled = !e.value;
 });
 
+// Reusable Box3 to avoid garbage collection overhead during rapid drag events
+const boundaryBox = new THREE.Box3();
+
+// Enforce floor constraints during translation
+transformControls.addEventListener('change', () => {
+    const target = transformControls.object;
+    
+    // Only apply constraints when actively translating an object
+    if (target && transformControls.getMode() === 'translate') {
+        // Calculate the current world-space bounding box of the selected mesh
+        boundaryBox.setFromObject(target);
+        
+        // Check if the absolute bottom point of the mesh dips below the grid floor (y = 0)
+        if (boundaryBox.min.y < 0) {
+            // Push the object back up by exactly how much it crossed the floor plane
+            target.position.y -= boundaryBox.min.y;
+        }
+    }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. STATE
 // ─────────────────────────────────────────────────────────────────────────────
