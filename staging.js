@@ -418,21 +418,14 @@ async function uploadSceneFile(arrayBuffer, ext, onProgress) {
 
 /**
  * iOS Quick Look — trigger AR via a <a rel="ar"> anchor.
- *
- * IMPORTANT: blob: URLs do NOT work here. Quick Look runs as a separate
- * OS-level process (outside the browser sandbox) and cannot access blob URLs —
- * which is why the prompt appeared but nothing loaded previously.
- *
- * The anchor must use a real public HTTPS URL. We obtain that by uploading
- * the merged GLB to Firebase Storage first.
- *
- * For single-model scenes where a USDZ is already available in Firebase,
- * we use that directly (faster, better quality, no upload needed).
+ * * CRITICAL FIX: Appending '#allowsScale=0' to the secure asset URL forces 
+ * ARKit Quick Look to lock the model at exactly 100% true physical scale,
+ * completely disabling user pinch-to-scale gestures.
  */
 function triggerQuickLook(httpsUrl) {
     const anchor = document.createElement('a');
     anchor.setAttribute('rel', 'ar');
-    anchor.setAttribute('href', httpsUrl);
+    anchor.setAttribute('href', `${httpsUrl}#allowsScale=0`);
     anchor.style.cssText = 'display:none;position:fixed;';
 
     // Safari requires a child <img> element on the anchor or Quick Look won't open.
@@ -446,16 +439,17 @@ function triggerQuickLook(httpsUrl) {
 
 /**
  * Android Scene Viewer via intent URL.
- * Scene Viewer also requires a public HTTPS URL — blob: URLs are not supported.
+ * * CRITICAL FIX: Adding '&resizable=false' into the Google Intent parameters 
+ * tells ARCore to freeze the asset bounds, preventing users from resizing 
+ * furniture pieces out of their real metric proportions.
  */
 function openSceneViewer(glbUrl) {
     const encoded  = encodeURIComponent(glbUrl);
     const fallback = encodeURIComponent(window.location.href);
 
-    // ar_preferred degrades gracefully if ARCore isn't installed.
     window.location.href =
         `intent://arvr.google.com/scene-viewer/1.0` +
-        `?file=${encoded}&mode=ar_preferred` +
+        `?file=${encoded}&mode=ar_preferred&resizable=false` +
         `#Intent;scheme=https;package=com.google.ar.core;` +
         `action=android.intent.action.VIEW;` +
         `S.browser_fallback_url=${fallback};end;`;
@@ -492,18 +486,12 @@ async function handleARButton() {
 
     try {
         if (isIOS) {
-            // ── iOS path ─────────────────────────────────────────────────────
-            // Single model with a pre-existing USDZ → open it directly.
-            // This is the fastest path and gives the best visual quality.
             const onlyOne = activeModels.length === 1 && activeModels[0].usdzUrl;
 
             if (onlyOne) {
                 setLabel('⚡ Opening…');
                 triggerQuickLook(activeModels[0].usdzUrl);
             } else {
-                // Multiple models (or no USDZ) → export merged USDZ and upload.
-                // Quick Look cannot read blob: URLs from an async context reliably, 
-                // so we use a real HTTPS URL.
                 setLabel('⚡ COMPILING…');
                 const arrayBuffer = await buildMergedUSDZ();
                 const usdzUrl     = await uploadSceneFile(arrayBuffer, 'usdz', setLabel);
@@ -511,14 +499,12 @@ async function handleARButton() {
             }
 
         } else if (isAndroid) {
-            // ── Android path ─────────────────────────────────────────────────
             setLabel('⚡ COMPILING…');
             const arrayBuffer = await buildMergedGLB();
             const glbUrl      = await uploadSceneFile(arrayBuffer, 'glb', setLabel);
             openSceneViewer(glbUrl);
 
         } else {
-            // ── Desktop fallback ─────────────────────────────────────────────
             setLabel('⚡ COMPILING…');
             const arrayBuffer = await buildMergedGLB();
             downloadGLB(arrayBuffer);
