@@ -21,6 +21,13 @@
         <hr class="divider" />
 
         <h2>Staging Catalog</h2>
+        
+        <!-- Live Budget Tally Display Interface -->
+        <div id="budget-container">
+            <span class="budget-label">Project Budget Tally</span>
+            <span id="budget-tally">$0.00</span>
+        </div>
+
         <p class="subtitle">Select a department to browse available spatial assets.</p>
 
         <div id="category-tabs">
@@ -31,11 +38,12 @@
 
         <div id="catalog-list"></div>
 
-        <!-- Dynamic Retail Variant Configurator Drawer -->
+        <!-- Dynamic Retail Variant Configurator Drawer - COMMENTED OUT FOR NOW
         <div id="variant-container">
             <div class="variant-title">Material Finish</div>
             <div id="swatch-group" class="swatch-group"></div>
         </div>
+        -->
 
         <div id="controls-hint">
             <p><strong>Transform Hotkeys:</strong></p>
@@ -52,13 +60,17 @@
         <!-- Live Metric Readout Tag -->
         <div id="dimension-badge">SIZE: 0.00m × 0.00m × 0.00m</div>
 
+        <!-- Direct Measurement Dynamic Screen-Space Overlay Node -->
+        <div id="measure-floating-label">0.00m</div>
+
         <!-- Floating Camera Snapshot Action Button -->
         <button id="snapshot-btn" class="btn-snapshot" title="Share Staging Layout">📸</button>
         
         <div id="mobile-transform-toolbar">
             <button id="tool-translate" class="tool-btn active-tool" title="Move Mode">✛ Move</button>
             <button id="tool-rotate" class="tool-btn" title="Rotate Mode">⟳ Rotate</button>
-            <button id="tool-delete" class="tool-btn delete-tool-mode" title="Toggle Delete Mode">🗑 Delete Mode</button>
+            <button id="tool-measure" class="tool-btn" title="Measure Space">📏 Measure</button>
+            <button id="tool-delete" class="tool-btn delete-tool-mode" title="Toggle Delete Mode">🗑 Delete</button>
             <button id="view-ar-btn" class="btn-ar">View in AR</button>
         </div>
     </div>
