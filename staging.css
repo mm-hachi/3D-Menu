@@ -383,8 +383,8 @@ kbd {
     cursor: pointer;
 }
 
-/* --- Responsive Media Breakdown --- */
-@media (max-width: 768px) {
+/* --- Responsive Media Layout for Portrait Devices --- */
+@media (orientation: portrait) {
     body {
         flex-direction: column-reverse;
     }
@@ -400,6 +400,17 @@ kbd {
     }
     #mobile-transform-toolbar {
         bottom: calc(42dvh + 16px);
+    }
+    /* Vertically shift layout badge elements to stack safely above bottom interfaces */
+    #snapshot-btn {
+        top: auto;
+        bottom: calc(42dvh + 82px);
+        left: 20px;
+    }
+    #dimension-badge {
+        top: auto;
+        bottom: calc(42dvh + 82px);
+        right: 20px;
     }
 }
 
