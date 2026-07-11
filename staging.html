@@ -31,6 +31,12 @@
 
         <div id="catalog-list"></div>
 
+        <!-- Dynamic Retail Variant Configurator Drawer -->
+        <div id="variant-container">
+            <div class="variant-title">Material Finish</div>
+            <div id="swatch-group" class="swatch-group"></div>
+        </div>
+
         <div id="controls-hint">
             <p><strong>Transform Hotkeys:</strong></p>
             <ul>
@@ -43,6 +49,11 @@
     </div>
 
     <div id="canvas-container">
+        <!-- Live Metric Readout Tag -->
+        <div id="dimension-badge">SIZE: 0.00m × 0.00m × 0.00m</div>
+
+        <!-- Floating Camera Snapshot Action Button -->
+        <button id="snapshot-btn" class="btn-snapshot" title="Share Staging Layout">📸</button>
         
         <div id="mobile-transform-toolbar">
             <button id="tool-translate" class="tool-btn active-tool" title="Move Mode">✛ Move</button>
@@ -50,13 +61,8 @@
             <button id="tool-delete" class="tool-btn delete-tool-mode" title="Toggle Delete Mode">🗑 Delete Mode</button>
             <button id="view-ar-btn" class="btn-ar">View in AR</button>
         </div>
-
     </div>
 
-    <!--
-        importmap: pin Three.js to r160 to match your original, using unpkg.
-        The "three/examples/jsm/" alias covers all the add-ons (loaders, controls, exporters).
-    -->
     <script type="importmap">
         {
             "imports": {
