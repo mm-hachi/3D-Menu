@@ -27,7 +27,6 @@ const camera = new THREE.PerspectiveCamera(
 );
 camera.position.set(0, 4, 8);
 
-// Renderer setup updated to preserve buffers for dynamic snapshots
 const renderer = new THREE.WebGLRenderer({ 
     antialias: true, 
     powerPreference: 'high-performance',
@@ -39,7 +38,6 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
 
-// Calibrated Lighting Matrix for Realtime Soft Shadows
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
 
@@ -53,23 +51,20 @@ dirLight.shadow.camera.left = -6;
 dirLight.shadow.camera.right = 6;
 dirLight.shadow.camera.top = 6;
 dirLight.shadow.camera.bottom = -6;
-dirLight.shadow.bias = -0.0005; // Eradicates shadow acne/banding
+dirLight.shadow.bias = -0.0005;
 scene.add(dirLight);
 
-// Studio Grid Layout
 scene.add(new THREE.GridHelper(30, 30, 0xaaaaaa, 0xdddddd));
 
-// Low-overhead blend catcher for ground reflections/shadows
 const shadowFloorGeo = new THREE.PlaneGeometry(50, 50);
 const shadowFloorMat = new THREE.ShadowMaterial({ opacity: 0.25 });
 const shadowFloor = new THREE.Mesh(shadowFloorGeo, shadowFloorMat);
 shadowFloor.rotation.x = -Math.PI / 2;
-shadowFloor.position.y = 0.002; // Elevated imperceptibly above baseline lines
+shadowFloor.position.y = 0.002;
 shadowFloor.receiveShadow = true;
 shadowFloor.name = '__floor__';
 scene.add(shadowFloor);
 
-// Invisible target node dedicated to accurate physics raycasting tracking
 const floorMesh = new THREE.Mesh(
     new THREE.PlaneGeometry(100, 100),
     new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
@@ -78,7 +73,6 @@ floorMesh.rotation.x = -Math.PI / 2;
 floorMesh.name = '__raycast_floor__';
 scene.add(floorMesh);
 
-// Bounding box wireframe helper tracking current active focus selections
 const selectionBoxHelper = new THREE.BoxHelper(new THREE.Mesh(), 0x007aff);
 selectionBoxHelper.visible = false;
 scene.add(selectionBoxHelper);
@@ -113,7 +107,6 @@ transformControls.addEventListener('dragging-changed', (e) => {
 
 const boundaryBox = new THREE.Box3();
 
-// Handle metrics updating and floor boundaries inside translation matrix loop
 transformControls.addEventListener('change', () => {
     const attached = transformControls.object;
     if (attached) {
@@ -131,11 +124,14 @@ transformControls.addEventListener('change', () => {
 
 transformControls.addEventListener('objectChange', () => {
     const attached = transformControls.object;
-    if (attached) updateLiveDimensions(attached);
+    if (attached) {
+        updateLiveDimensions(attached);
+        saveSceneToLocalStorage(); // Trigger local snapshot update on model changes
+    }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. STATE
+// 4. STATE MANAGEMENT & REGISTRY
 // ─────────────────────────────────────────────────────────────────────────────
 
 const activeModels = [];
@@ -148,18 +144,48 @@ let rafId       = null;
 const raycaster = new THREE.Raycaster();
 const pointer   = new THREE.Vector2();
 
-// Registry mapping out standard catalog finish modifications
-const PRODUCT_VARIANTS = {
-    fabrics: [
-        { name: 'Charcoal', hex: '#2c3e50' },
-        { name: 'Oatmeal',  hex: '#dfd5c6' },
-        { name: 'Rust',     hex: '#b85a38' },
-        { name: 'Emerald',  hex: '#0f5239' }
-    ]
-};
+// Measurement Tool Workflow State Variables
+let measurePoints = [];
+let measureLineMesh = null;
+let measureSpheres = [];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. SPAWN / DELETE / SELECTION UTILITIES
+// 5. BUDGET TALLY & LOCAL STORAGE PERSISTENCE MECHANISMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function calculateTotalBudget() {
+    const total = activeModels.reduce((sum, item) => sum + (item.price || 0), 0);
+    document.getElementById('budget-tally').textContent = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function saveSceneToLocalStorage() {
+    const serialized = activeModels.map(item => ({
+        glbUrl: item.glbUrl,
+        usdzUrl: item.usdzUrl,
+        price: item.price,
+        position: [item.mesh.position.x, item.mesh.position.y, item.mesh.position.z],
+        rotation: [item.mesh.rotation.x, item.mesh.rotation.y, item.mesh.rotation.z],
+        scale: [item.mesh.scale.x, item.mesh.scale.y, item.mesh.scale.z]
+    }));
+    localStorage.setItem('shot47_staging_persistence', JSON.stringify(serialized));
+}
+
+function loadSceneFromLocalStorage() {
+    const rawData = localStorage.getItem('shot47_staging_persistence');
+    if (!rawData) return;
+    try {
+        const parsed = JSON.parse(rawData);
+        parsed.forEach(data => {
+            // Re-instantiate entities with preserved physical transformations
+            spawnModel(data.glbUrl, data.usdzUrl, data.price, data);
+        });
+    } catch (e) {
+        console.error('[Persistence Engine] Initialization error parsing local storage data:', e);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. SPAWN / DELETE / SELECTION UTILITIES
 // ─────────────────────────────────────────────────────────────────────────────
 
 function prepareMaster(root) {
@@ -172,24 +198,35 @@ function prepareMaster(root) {
     });
 }
 
-function spawnFromCache(glbUrl, usdzUrl) {
+function spawnFromCache(glbUrl, usdzUrl, price, transformData) {
     const mesh = modelCache[glbUrl].clone();
-    mesh.position.set(0, 0, 0);
-    mesh.rotation.set(0, 0, 0);
-    mesh.scale.set(1, 1, 1);
+    
+    if (transformData) {
+        mesh.position.fromArray(transformData.position);
+        mesh.rotation.fromArray(transformData.rotation);
+        mesh.scale.fromArray(transformData.scale);
+    } else {
+        mesh.position.set(0, 0, 0);
+        mesh.rotation.set(0, 0, 0);
+        mesh.scale.set(1, 1, 1);
+    }
 
     scene.add(mesh);
-    activeModels.push({ mesh, glbUrl, usdzUrl: usdzUrl ?? null });
+    activeModels.push({ mesh, glbUrl, usdzUrl: usdzUrl ?? null, price: price || 299.99 });
 
-    if (currentTool !== 'delete') {
+    calculateTotalBudget();
+    saveSceneToLocalStorage();
+
+    if (currentTool !== 'delete' && currentTool !== 'measure') {
         transformControls.attach(mesh);
         handleSelectionFocus(mesh);
     }
 }
 
-function spawnModel(glbUrl, usdzUrl) {
+function spawnModel(glbUrl, usdzUrl, price, transformData = null) {
+    const numericPrice = price || 299.99;
     if (modelCache[glbUrl]) {
-        spawnFromCache(glbUrl, usdzUrl);
+        spawnFromCache(glbUrl, usdzUrl, numericPrice, transformData);
         return;
     }
 
@@ -198,7 +235,7 @@ function spawnModel(glbUrl, usdzUrl) {
         (gltf) => {
             prepareMaster(gltf.scene);
             modelCache[glbUrl] = gltf.scene;
-            spawnFromCache(glbUrl, usdzUrl);
+            spawnFromCache(glbUrl, usdzUrl, numericPrice, transformData);
         },
         undefined,
         (err) => console.error('[spawnModel] Load error:', err)
@@ -230,19 +267,17 @@ function deleteModel(entry) {
 
     const idx = activeModels.indexOf(entry);
     if (idx !== -1) activeModels.splice(idx, 1);
+
+    calculateTotalBudget();
+    saveSceneToLocalStorage();
 }
 
-/**
- * Triggers interactive canvas overlays, line limits, and variant selection drawers
- */
 function handleSelectionFocus(targetMesh) {
     const badge = document.getElementById('dimension-badge');
-    const variantDrawer = document.getElementById('variant-container');
 
     if (!targetMesh) {
         selectionBoxHelper.visible = false;
         badge.style.display = 'none';
-        variantDrawer.style.display = 'none';
         return;
     }
 
@@ -250,12 +285,8 @@ function handleSelectionFocus(targetMesh) {
     selectionBoxHelper.visible = true;
 
     updateLiveDimensions(targetMesh);
-    renderVariantDrawer(targetMesh);
 }
 
-/**
- * Calculates absolute metrics based on geometry world-space scale properties
- */
 function updateLiveDimensions(mesh) {
     const badge = document.getElementById('dimension-badge');
     const bbox = new THREE.Box3().setFromObject(mesh);
@@ -268,46 +299,113 @@ function updateLiveDimensions(mesh) {
     badge.style.display = 'block';
 }
 
-/**
- * Renders interactive finish options inside the active workflow drawer
- */
-function renderVariantDrawer(mesh) {
-    const drawer = document.getElementById('variant-container');
-    const group  = document.getElementById('swatch-group');
-    group.innerHTML = ''; 
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. DIRECT POINT-TO-POINT SPACE MEASUREMENT TOOL PIPELINE
+// ─────────────────────────────────────────────────────────────────────────────
 
-    const variants = PRODUCT_VARIANTS.fabrics;
-    
-    variants.forEach(variant => {
-        const swatch = document.createElement('div');
-        swatch.className = 'swatch';
-        swatch.style.backgroundColor = variant.hex;
-        swatch.setAttribute('title', variant.name);
-
-        swatch.addEventListener('click', () => {
-            mesh.traverse(child => {
-                if (child.isMesh && child.material) {
-                    // Unique local duplication checks to avoid global instance cross-contamination
-                    if (!child.userData.isClonedMat) {
-                        child.material = child.material.clone();
-                        child.userData.isClonedMat = true;
-                    }
-                    child.material.color.set(variant.hex);
-                }
-            });
-            
-            document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active-swatch'));
-            swatch.classList.add('active-swatch');
-        });
-
-        group.appendChild(swatch);
+function clearMeasurementVisuals() {
+    if (measureLineMesh) {
+        scene.remove(measureLineMesh);
+        measureLineMesh.geometry.dispose();
+        measureLineMesh.material.dispose();
+        measureLineMesh = null;
+    }
+    measureSpheres.forEach(sphere => {
+        scene.remove(sphere);
+        sphere.geometry.dispose();
+        sphere.material.dispose();
     });
-
-    drawer.style.display = 'flex';
+    measureSpheres = [];
+    measurePoints = [];
+    document.getElementById('measure-floating-label').style.display = 'none';
 }
 
+function updateMeasureOverlayHUD(pointA, pointB) {
+    const label = document.getElementById('measure-floating-label');
+    const distance = pointA.distanceTo(pointB);
+    label.textContent = `${distance.toFixed(2)}m`;
+
+    const midpoint = new THREE.Vector3().addVectors(pointA, pointB).multiplyScalar(0.5);
+    
+    // Convert 3D scene point to dynamic 2D screen coordinate parameters
+    const projectedVector = midpoint.clone().project(camera);
+    const x = (projectedVector.x * 0.5 + 0.5) * container.clientWidth;
+    const y = (-(projectedVector.y * 0.5) + 0.5) * container.clientHeight;
+
+    label.style.left = `${x}px`;
+    label.style.top = `${y}px`;
+    label.style.display = 'block';
+}
+
+function handleMeasurementInteraction(clientX, clientY) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x  =  ((clientX - rect.left) / rect.width)  * 2 - 1;
+    pointer.y  = -((clientY - rect.top)  / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(pointer, camera);
+
+    // Target tracking objects as well as base floor configuration planes
+    const targetObjects = activeModels.map(item => item.mesh).concat([floorMesh]);
+    const hits = raycaster.intersectObjects(targetObjects, true);
+
+    if (hits.length === 0) return;
+    const hitPoint = hits[0].point;
+
+    // First coordinate selection mapping anchor execution
+    if (measurePoints.length === 0) {
+        clearMeasurementVisuals();
+        measurePoints.push(hitPoint.clone());
+
+        const sphereGeo = new THREE.SphereGeometry(0.06, 16, 16);
+        const sphereMat = new THREE.MeshBasicMaterial({ color: 0x34c759 });
+        const sphereMarker = new THREE.Mesh(sphereGeo, sphereMat);
+        sphereMarker.position.copy(hitPoint);
+        scene.add(sphereMarker);
+        measureSpheres.push(sphereMarker);
+
+    } else if (measurePoints.length === 1) {
+        // Double-click final lock anchor point evaluation step
+        measurePoints.push(hitPoint.clone());
+
+        const sphereGeo = new THREE.SphereGeometry(0.06, 16, 16);
+        const sphereMat = new THREE.MeshBasicMaterial({ color: 0x34c759 });
+        const sphereMarker = new THREE.Mesh(sphereGeo, sphereMat);
+        sphereMarker.position.copy(hitPoint);
+        scene.add(sphereMarker);
+        measureSpheres.push(sphereMarker);
+
+        updateMeasureOverlayHUD(measurePoints[0], measurePoints[1]);
+        measurePoints = []; // Flush coordinates back out to enable tracking resets
+    }
+}
+
+// Active spatial mouse tracing alignment logic loops
+renderer.domElement.addEventListener('pointermove', (e) => {
+    if (currentTool !== 'measure' || measurePoints.length !== 1) return;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x  =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+    pointer.y  = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(pointer, camera);
+    const targetObjects = activeModels.map(item => item.mesh).concat([floorMesh]);
+    const hits = raycaster.intersectObjects(targetObjects, true);
+
+    if (hits.length === 0) return;
+    const trackingPoint = hits[0].point;
+
+    if (measureLineMesh) scene.remove(measureLineMesh);
+
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([measurePoints[0], trackingPoint]);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x34c759, linewidth: 3, depthTest: false });
+    measureLineMesh = new THREE.Line(lineGeo, lineMat);
+    scene.add(measureLineMesh);
+
+    updateMeasureOverlayHUD(measurePoints[0], trackingPoint);
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
-// 6. RAYCASTING / INTERACTION
+// 8. RAYCASTING / INTERACTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 function pickEntry(clientX, clientY) {
@@ -329,6 +427,11 @@ function pickEntry(clientX, clientY) {
 
 function handlePointerDown(clientX, clientY) {
     if (transformControls.dragging) return;
+
+    if (currentTool === 'measure') {
+        handleMeasurementInteraction(clientX, clientY);
+        return;
+    }
 
     const entry = pickEntry(clientX, clientY);
 
@@ -357,24 +460,31 @@ renderer.domElement.addEventListener('touchstart', (e) => {
 }, { passive: true });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 7. TOOLBAR / HOTKEYS
+// 9. TOOLBAR / HOTKEYS
 // ─────────────────────────────────────────────────────────────────────────────
 
 function setActiveToolButton(targetButton) {
     document.getElementById('tool-translate').classList.remove('active-tool');
     document.getElementById('tool-rotate').classList.remove('active-tool');
+    document.getElementById('tool-measure').classList.remove('active-tool');
     document.getElementById('tool-delete').classList.remove('active-tool');
     targetButton.classList.add('active-tool');
 }
 
 function setTool(tool) {
     currentTool = tool;
+    clearMeasurementVisuals();
 
     if (tool === 'delete') {
         transformControls.detach();
         transformControls.visible = false;
         handleSelectionFocus(null);
         setActiveToolButton(document.getElementById('tool-delete'));
+    } else if (tool === 'measure') {
+        transformControls.detach();
+        transformControls.visible = false;
+        handleSelectionFocus(null);
+        setActiveToolButton(document.getElementById('tool-measure'));
     } else {
         transformControls.visible = true;
         transformControls.setMode(tool);
@@ -399,6 +509,7 @@ function setTool(tool) {
 
 document.getElementById('tool-translate').addEventListener('click', () => setTool('translate'));
 document.getElementById('tool-rotate').addEventListener('click',    () => setTool('rotate'));
+document.getElementById('tool-measure').addEventListener('click',   () => setTool('measure'));
 document.getElementById('tool-delete').addEventListener('click',    () => setTool('delete'));
 
 window.addEventListener('keydown', (e) => {
@@ -410,6 +521,9 @@ window.addEventListener('keydown', (e) => {
             break;
         case 'r':
             setTool('rotate');
+            break;
+        case 'm':
+            setTool('measure');
             break;
         case 'delete':
         case 'backspace': {
@@ -431,21 +545,19 @@ document.getElementById('freeze-btn').addEventListener('click', (e) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 8. SNAPSHOT & NATIVE DEVICE SHARE ENGINE
+// 10. SNAPSHOT & NATIVE DEVICE SHARE ENGINE
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function captureAndShareScene() {
     const wasGizmoVisible = transformControls.visible;
     const wasBoxVisible   = selectionBoxHelper.visible;
     
-    // Strips out tracking indicators before capturing memory frames
     transformControls.visible = false;
     selectionBoxHelper.visible = false;
 
     renderer.render(scene, camera);
     const dataUrl = renderer.domElement.toDataURL('image/png');
 
-    // Instantly restores operational helpers to runtime configurations
     transformControls.visible = wasGizmoVisible;
     selectionBoxHelper.visible = wasBoxVisible;
     renderer.render(scene, camera);
@@ -466,7 +578,6 @@ async function captureAndShareScene() {
             console.warn('[Share Engine] Operation bypassed or aborted.', error);
         }
     } else {
-        // Desktop browser fallback configuration
         const downloadLink = Object.assign(document.createElement('a'), {
             href: dataUrl,
             download: `room_design_${Date.now()}.png`
@@ -480,7 +591,7 @@ async function captureAndShareScene() {
 document.getElementById('snapshot-btn').addEventListener('click', captureAndShareScene);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 9. AR EXPORT (Fixed to disable environmental scale/occlusion clipping shifts)
+// 11. AR EXPORT WITH OCCLUSION BYPASSES
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function buildMergedGLB() {
@@ -545,7 +656,6 @@ function openSceneViewer(glbUrl) {
     const encoded  = encodeURIComponent(glbUrl);
     const fallback = encodeURIComponent(window.location.href);
 
-    // &disable_occlusion=true forces assets to override messy existing geometry
     window.location.href =
         `intent://arvr.google.com/scene-viewer/1.0` +
         `?file=${encoded}&mode=ar_preferred&resizable=false&disable_occlusion=true` +
@@ -612,7 +722,7 @@ async function handleARButton() {
 document.getElementById('view-ar-btn').addEventListener('click', handleARButton);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 10. FIREBASE CATALOG
+// 12. FIREBASE CATALOG & SYNC CONFIGURATION
 // ─────────────────────────────────────────────────────────────────────────────
 
 const firebaseConfig = {
@@ -679,7 +789,7 @@ function renderCatalog(category) {
         Promise.all([glbPromise, usdzPromise])
             .then(([glbUrl, usdzUrl]) => {
                 card.classList.remove('state-loading');
-                card.addEventListener('click', () => spawnModel(glbUrl, usdzUrl));
+                card.addEventListener('click', () => spawnModel(glbUrl, usdzUrl, asset.price));
             })
             .catch(() => {
                 card.classList.remove('state-loading');
@@ -688,6 +798,9 @@ function renderCatalog(category) {
             });
     });
 }
+
+let activeListenersCount = 0;
+const totalCollections = Object.keys(collectionMap).length;
 
 function initCatalogSync() {
     Object.entries(collectionMap).forEach(([category, collectionName]) => {
@@ -701,9 +814,18 @@ function initCatalogSync() {
                     glbName:  d.glb,
                     usdzName: d.usdz    ?? null,
                     imgName:  d.img     ?? null,
+                    price:    d.price   ?? 349.00 // Default fallbacks for custom price values
                 });
             });
             if (category === activeCategory) renderCatalog(activeCategory);
+
+            // Execute local database model loading ONLY after the initial structure yields sync completion
+            if (activeListenersCount < totalCollections) {
+                activeListenersCount++;
+                if (activeListenersCount === totalCollections) {
+                    loadSceneFromLocalStorage();
+                }
+            }
         });
     });
 }
@@ -718,7 +840,7 @@ document.querySelectorAll('.tab-btn').forEach((tab) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 11. RENDER LOOP
+// 13. RENDER LOOP
 // ─────────────────────────────────────────────────────────────────────────────
 
 function startLoop() {
@@ -727,12 +849,22 @@ function startLoop() {
         if (!animating) { rafId = null; return; }
         rafId = requestAnimationFrame(loop);
         orbitControls.update();
+        
+        // Dynamic tracing realignment updates if point measuring workflow is active
+        if (currentTool === 'measure' && measurePoints.length === 1 && measureLineMesh) {
+            const pA = measurePoints[0];
+            // Read coordinate array positions out of dynamic bounding paths
+            const positionAttr = measureLineMesh.geometry.attributes.position;
+            const pB = new THREE.Vector3(positionAttr.getX(1), positionAttr.getY(1), positionAttr.getZ(1));
+            updateMeasureOverlayHUD(pA, pB);
+        }
+
         renderer.render(scene, camera);
     })();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 12. WINDOW RESIZE HANDLER (Completed & Stabilized)
+// 14. WINDOW RESIZE HANDLER
 // ─────────────────────────────────────────────────────────────────────────────
 
 window.addEventListener('resize', () => {
