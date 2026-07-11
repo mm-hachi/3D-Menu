@@ -176,7 +176,6 @@ function loadSceneFromLocalStorage() {
     try {
         const parsed = JSON.parse(rawData);
         parsed.forEach(data => {
-            // Re-instantiate entities with preserved physical transformations
             spawnModel(data.glbUrl, data.usdzUrl, data.price, data);
         });
     } catch (e) {
@@ -344,14 +343,12 @@ function handleMeasurementInteraction(clientX, clientY) {
 
     raycaster.setFromCamera(pointer, camera);
 
-    // Target tracking objects as well as base floor configuration planes
     const targetObjects = activeModels.map(item => item.mesh).concat([floorMesh]);
     const hits = raycaster.intersectObjects(targetObjects, true);
 
     if (hits.length === 0) return;
     const hitPoint = hits[0].point;
 
-    // First coordinate selection mapping anchor execution
     if (measurePoints.length === 0) {
         clearMeasurementVisuals();
         measurePoints.push(hitPoint.clone());
@@ -364,7 +361,6 @@ function handleMeasurementInteraction(clientX, clientY) {
         measureSpheres.push(sphereMarker);
 
     } else if (measurePoints.length === 1) {
-        // Double-click final lock anchor point evaluation step
         measurePoints.push(hitPoint.clone());
 
         const sphereGeo = new THREE.SphereGeometry(0.06, 16, 16);
@@ -375,11 +371,11 @@ function handleMeasurementInteraction(clientX, clientY) {
         measureSpheres.push(sphereMarker);
 
         updateMeasureOverlayHUD(measurePoints[0], measurePoints[1]);
-        measurePoints = []; // Flush coordinates back out to enable tracking resets
+        measurePoints = []; 
     }
 }
 
-// Active spatial mouse tracing alignment logic loops
+// Active spatial pointer tracing alignment logic loops
 renderer.domElement.addEventListener('pointermove', (e) => {
     if (currentTool !== 'measure' || measurePoints.length !== 1) return;
 
@@ -430,6 +426,8 @@ function handlePointerDown(clientX, clientY) {
 
     if (currentTool === 'measure') {
         handleMeasurementInteraction(clientX, clientY);
+        // Temporarily freeze orbit rotation while actively calculating an extrusion path
+        orbitControls.enabled = (measurePoints.length !== 1);
         return;
     }
 
@@ -449,15 +447,11 @@ function handlePointerDown(clientX, clientY) {
     }
 }
 
+// Unified desktop mouse and raw phone touch listener pipeline
 renderer.domElement.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     handlePointerDown(e.clientX, e.clientY);
 });
-
-renderer.domElement.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1) return;
-    handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
-}, { passive: true });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 9. TOOLBAR / HOTKEYS
@@ -474,6 +468,7 @@ function setActiveToolButton(targetButton) {
 function setTool(tool) {
     currentTool = tool;
     clearMeasurementVisuals();
+    orbitControls.enabled = true; // Ensure standard fallback configuration
 
     if (tool === 'delete') {
         transformControls.detach();
@@ -814,12 +809,11 @@ function initCatalogSync() {
                     glbName:  d.glb,
                     usdzName: d.usdz    ?? null,
                     imgName:  d.img     ?? null,
-                    price:    d.price   ?? 349.00 // Default fallbacks for custom price values
+                    price:    d.price   ?? 349.00
                 });
             });
             if (category === activeCategory) renderCatalog(activeCategory);
 
-            // Execute local database model loading ONLY after the initial structure yields sync completion
             if (activeListenersCount < totalCollections) {
                 activeListenersCount++;
                 if (activeListenersCount === totalCollections) {
@@ -850,10 +844,8 @@ function startLoop() {
         rafId = requestAnimationFrame(loop);
         orbitControls.update();
         
-        // Dynamic tracing realignment updates if point measuring workflow is active
         if (currentTool === 'measure' && measurePoints.length === 1 && measureLineMesh) {
             const pA = measurePoints[0];
-            // Read coordinate array positions out of dynamic bounding paths
             const positionAttr = measureLineMesh.geometry.attributes.position;
             const pB = new THREE.Vector3(positionAttr.getX(1), positionAttr.getY(1), positionAttr.getZ(1));
             updateMeasureOverlayHUD(pA, pB);
