@@ -10,25 +10,32 @@
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #0f172a; }
         
-        /* Hides model-viewer's default absolute 'View in AR' button overlay */
+        /* Hides model-viewer's default canvas AR button */
         model-viewer::part(default-ar-button) {
             display: none !important;
-        }
-        
-        /* Preloader overlay design */
-        #loader-overlay {
-            background-color: rgba(15, 23, 42, 0.95);
-            transition: opacity 0.4s ease;
         }
     </style>
 </head>
 <body class="w-screen h-screen overflow-hidden relative">
 
-    <!-- Loading Splash State -->
-    <div id="loader-overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center p-6 text-center text-white">
-        <div class="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-emerald-500 mb-4"></div>
-        <h2 class="text-xl font-bold tracking-tight">Initializing AR Space</h2>
-        <p class="text-sm text-slate-400 mt-1 max-w-xs">Connecting to camera pass-through and preparing high-fidelity runtime meshes...</p>
+    <!-- Loading & Action Overlay Gate -->
+    <div id="loader-overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center p-6 text-center text-white bg-slate-950 transition-opacity duration-300">
+        <!-- Spinner (Hidden when model is ready or has error) -->
+        <div id="loader-spinner" class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500 mb-6"></div>
+        
+        <!-- Status Messages -->
+        <h2 id="loader-title" class="text-xl font-bold tracking-tight">Preparing AR Space</h2>
+        <p id="loader-subtitle" class="text-sm text-slate-400 mt-2 max-w-xs">Downloading 3D asset files...</p>
+        
+        <!-- Dynamic Tap-to-Enter Action Button (Shown only when ready) -->
+        <button id="enter-ar-btn" class="hidden mt-8 px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition transform hover:scale-105 active:scale-95 flex items-center gap-2">
+            <span>📱 Drop Model in AR Space</span>
+        </button>
+        
+        <!-- Error Fallback Action Button (Shown only on failure) -->
+        <button id="error-btn" onclick="window.history.back()" class="hidden mt-8 px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl transition">
+            ← Go Back to Showroom
+        </button>
     </div>
 
     <!-- Active 3D/AR Frame -->
@@ -44,10 +51,10 @@
         interaction-prompt="none"
         shadow-intensity="1">
         
-        <!-- Native Invisible Trigger Hook -->
+        <!-- Native Hidden Trigger Hook -->
         <button slot="ar-button" id="native-ar-trigger" class="hidden"></button>
 
-        <!-- WebXR DOM Overlay UI Layer (Only renders inside active XR views) -->
+        <!-- WebXR DOM Overlay UI Layer (Visible while inside the camera space) -->
         <div id="ar-dom-overlay" slot="xr-overlay" class="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-slate-950/90 to-transparent text-white flex flex-col gap-4 pointer-events-none">
             <div class="pointer-events-auto">
                 <span class="px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase bg-emerald-600 rounded-full">WebXR Engine</span>
@@ -69,42 +76,74 @@
 
     <script>
         const viewer = document.getElementById('ar-viewer');
-        const loader = document.getElementById('loader-overlay');
+        const loaderOverlay = document.getElementById('loader-overlay');
+        const loaderSpinner = document.getElementById('loader-spinner');
+        const loaderTitle = document.getElementById('loader-title');
+        const loaderSubtitle = document.getElementById('loader-subtitle');
+        const enterArBtn = document.getElementById('enter-ar-btn');
+        const errorBtn = document.getElementById('error-btn');
         const trigger = document.getElementById('native-ar-trigger');
         const modelNameDisplay = document.getElementById('model-display-name');
 
         // Parameter intake
         const params = new URLSearchParams(window.location.search);
-        const glb = params.get('glb') || 'https://modelviewer.dev/shared-assets/models/Chair.glb'; // Fallback demo assets
-        const usdz = params.get('usdz') || 'https://modelviewer.dev/shared-assets/models/Chair.usdz';
-        const name = params.get('name') || "Standard Chair";
+        const glb = params.get('glb') || 'https://modelviewer.dev/shared-assets/models/Chair.glb'; // Demo Fallback
+        const usdz = params.get('usdz') || 'https://modelviewer.dev/shared-assets/models/Chair.usdz'; // Demo Fallback
+        const name = params.get('name') || "Staging Model";
 
-        // Map data to canvas elements
+        // Assign model URLs to the engine
         viewer.src = glb;
         viewer.iosSrc = usdz;
         modelNameDisplay.textContent = name;
 
-        // Auto-launch WebXR mode as soon as parsing completes
-        viewer.addEventListener('load', () => {
-            // Fade out splash screen
-            loader.style.opacity = '0';
-            setTimeout(() => loader.classList.add('hidden'), 400);
-
-            // Programmatically launch directly into camera view
-            if (viewer.canActivateAR) {
-                trigger.click();
-            }
+        // 1. Show download progress
+        viewer.addEventListener('progress', (event) => {
+            const percent = Math.round(event.detail.totalProgress * 100);
+            loaderSubtitle.textContent = `Downloading assets: ${percent}%`;
         });
 
-        // DOM Overlay Actions
+        // 2. Trigger ready state on completion
+        viewer.addEventListener('load', () => {
+            loaderSpinner.classList.add('hidden');
+            loaderTitle.textContent = "Asset Staged Successfully!";
+            loaderSubtitle.textContent = `"${name}" is cached and ready for physical placement.`;
+            enterArBtn.classList.remove('hidden');
+        });
+
+        // 3. Handle broken links or server CORS blocks gracefully
+        viewer.addEventListener('error', (err) => {
+            console.error("Asset Load Failure:", err);
+            loaderSpinner.classList.add('hidden');
+            loaderTitle.textContent = "Staging Failed";
+            loaderSubtitle.textContent = "The 3D model could not be downloaded. Verify the file URL and confirm CORS is allowed on your hosting platform.";
+            errorBtn.classList.remove('hidden');
+        });
+
+        // 4. Secure User Gesture Trigger for Camera AR
+        enterArBtn.addEventListener('click', () => {
+            // Trigger native AR mechanism safely
+            if (viewer.canActivateAR) {
+                trigger.click();
+            } else {
+                viewer.activateAR();
+            }
+
+            // Hide the gateway overlay shortly after they transition into AR
+            setTimeout(() => {
+                loaderOverlay.style.opacity = '0';
+                setTimeout(() => loaderOverlay.classList.add('hidden'), 300);
+            }, 1500);
+        });
+
+        // AR Space HUD Functions
         function rotateModel() {
             const orbit = viewer.getCameraOrbit();
-            const newTheta = orbit.theta + (Math.PI / 2); // 90 degree offset
+            const newTheta = orbit.theta + (Math.PI / 2);
             viewer.cameraOrbit = `${newTheta}rad ${orbit.phi}rad ${orbit.radius}m`;
         }
 
         function exitSandbox() {
-            // WebGL garbage disposal for Safari context safety
+            // Purge WebGL context cache for Safari safety
             const gl = viewer.canvas?.getContext('webgl') || viewer.canvas?.getContext('webgl2');
             if (gl) {
                 const ext = gl.getExtension('WEBGL_lose_context');
