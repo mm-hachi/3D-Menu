@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Shot 47 | Direct AR Staging</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; }
+        
+        /* Hides model-viewer's default absolute 'View in AR' button overlay */
+        model-viewer::part(default-ar-button) {
+            display: none !important;
+        }
+        
+        /* Preloader overlay design */
+        #loader-overlay {
+            background-color: rgba(15, 23, 42, 0.95);
+            transition: opacity 0.4s ease;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden relative">
+
+    <!-- Loading Splash State -->
+    <div id="loader-overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center p-6 text-center text-white">
+        <div class="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-emerald-500 mb-4"></div>
+        <h2 class="text-xl font-bold tracking-tight">Initializing AR Space</h2>
+        <p class="text-sm text-slate-400 mt-1 max-w-xs">Connecting to camera pass-through and preparing high-fidelity runtime meshes...</p>
+    </div>
+
+    <!-- Active 3D/AR Frame -->
+    <model-viewer 
+        id="ar-viewer"
+        class="w-full h-full"
+        src="" 
+        ios-src=""
+        alt="High fidelity staging mesh" 
+        ar 
+        ar-modes="webxr quick-look" 
+        camera-controls 
+        interaction-prompt="none"
+        shadow-intensity="1">
+        
+        <!-- Native Invisible Trigger Hook -->
+        <button slot="ar-button" id="native-ar-trigger" class="hidden"></button>
+
+        <!-- WebXR DOM Overlay UI Layer (Only renders inside active XR views) -->
+        <div id="ar-dom-overlay" slot="xr-overlay" class="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-slate-950/90 to-transparent text-white flex flex-col gap-4 pointer-events-none">
+            <div class="pointer-events-auto">
+                <span class="px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase bg-emerald-600 rounded-full">WebXR Engine</span>
+                <h2 id="model-display-name" class="text-xl font-bold mt-2">Staging Asset</h2>
+                <p class="text-xs text-slate-300">Pinch to scale, drag to position</p>
+            </div>
+            
+            <div class="flex gap-3 pointer-events-auto">
+                <button onclick="rotateModel()" class="flex-1 py-3 bg-white/10 hover:bg-white/20 border border-white/25 text-white text-xs font-semibold rounded-xl backdrop-blur-md transition">
+                    🔄 Rotate 90°
+                </button>
+                <button onclick="exitSandbox()" class="flex-1 py-3 bg-red-600/90 hover:bg-red-700 text-white text-xs font-semibold rounded-xl transition">
+                    ❌ Close Space
+                </button>
+            </div>
+        </div>
+        
+    </model-viewer>
+
+    <script>
+        const viewer = document.getElementById('ar-viewer');
+        const loader = document.getElementById('loader-overlay');
+        const trigger = document.getElementById('native-ar-trigger');
+        const modelNameDisplay = document.getElementById('model-display-name');
+
+        // Parameter intake
+        const params = new URLSearchParams(window.location.search);
+        const glb = params.get('glb') || 'https://modelviewer.dev/shared-assets/models/Chair.glb'; // Fallback demo assets
+        const usdz = params.get('usdz') || 'https://modelviewer.dev/shared-assets/models/Chair.usdz';
+        const name = params.get('name') || "Standard Chair";
+
+        // Map data to canvas elements
+        viewer.src = glb;
+        viewer.iosSrc = usdz;
+        modelNameDisplay.textContent = name;
+
+        // Auto-launch WebXR mode as soon as parsing completes
+        viewer.addEventListener('load', () => {
+            // Fade out splash screen
+            loader.style.opacity = '0';
+            setTimeout(() => loader.classList.add('hidden'), 400);
+
+            // Programmatically launch directly into camera view
+            if (viewer.canActivateAR) {
+                trigger.click();
+            }
+        });
+
+        // DOM Overlay Actions
+        function rotateModel() {
+            const orbit = viewer.getCameraOrbit();
+            const newTheta = orbit.theta + (Math.PI / 2); // 90 degree offset
+            viewer.cameraOrbit = `${newTheta}rad ${orbit.phi}rad ${orbit.radius}m`;
+        }
+
+        function exitSandbox() {
+            // WebGL garbage disposal for Safari context safety
+            const gl = viewer.canvas?.getContext('webgl') || viewer.canvas?.getContext('webgl2');
+            if (gl) {
+                const ext = gl.getExtension('WEBGL_lose_context');
+                if (ext) ext.loseContext();
+            }
+            viewer.src = '';
+            viewer.iosSrc = '';
+            window.location.href = 'furniture.html';
+        }
+    </script>
+</body>
+</html>
