@@ -30,9 +30,16 @@
                 <p class="text-slate-600">Select an asset department below to browse high-fidelity runtime models or launch the master assembly floor.</p>
             </div>
             
-            <div class="flex-shrink-0">
-                <a href="staging.html" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-6 py-3.5 rounded-xl shadow-sm hover:shadow transition duration-200 group">
+            <!-- Dual Staging App Trigger Stack -->
+            <div class="flex-shrink-0 flex flex-col sm:items-end gap-3">
+                <!-- Original Staging App (Untouched) -->
+                <a href="staging.html" class="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-6 py-3.5 rounded-xl shadow-sm hover:shadow transition duration-200 group w-full sm:w-auto">
                     <span>📦 Launch 3D Staging Sandbox</span>
+                    <span class="transform group-hover:translate-x-1 transition duration-200">→</span>
+                </a>
+                <!-- New Direct-to-AR Staging App -->
+                <a href="ar-staging.html" class="inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-6 py-3.5 rounded-xl shadow-sm hover:shadow transition duration-200 group w-full sm:w-auto">
+                    <span>📱 Launch AR Staging Sandbox</span>
                     <span class="transform group-hover:translate-x-1 transition duration-200">→</span>
                 </a>
             </div>
