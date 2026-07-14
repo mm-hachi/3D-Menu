@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Shot 47 | Direct AR Staging</title>
+    <title>47 XLVII | Direct AR Staging</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+    <!-- Bumped from 3.5.0 -> 4.1.0. The old version was two majors behind current;
+         AR/Scene-Viewer/Quick-Look handling has had real fixes since then. -->
+    <script type="module" src="https://cdnjs.cloudflare.com/ajax/libs/model-viewer/4.1.0/model-viewer.min.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #0f172a; }
         
@@ -46,7 +48,7 @@
         ios-src=""
         alt="High fidelity staging mesh" 
         ar 
-        ar-modes="webxr quick-look" 
+        ar-modes="webxr scene-viewer quick-look fallback" 
         camera-controls 
         interaction-prompt="none"
         shadow-intensity="1">
@@ -144,7 +146,8 @@
 
         function exitSandbox() {
             // Purge WebGL context cache for Safari safety
-            const gl = viewer.canvas?.getContext('webgl') || viewer.canvas?.getContext('webgl2');
+            const gl = viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2')
+                || viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl');
             if (gl) {
                 const ext = gl.getExtension('WEBGL_lose_context');
                 if (ext) ext.loseContext();
