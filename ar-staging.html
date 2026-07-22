@@ -1,27 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Shot 47 XLVII | AR Sandbox</title>
+    <title>Shot 47 XLVII | 8th Wall AR Sandbox</title>
+
+    <!-- 8th Wall SLAM Engine & Extras -->
+    <script src="//cdn.8thwall.com/apps/xrweb"></script>
+    <script src="//cdn.8thwall.com/apps/xrextras"></script>
+
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="ar_staging.css">
 </head>
-<body>
-    <div id="canvas-container"></div>
-    
-    <div id="startup-screen">
-        <div class="glass-panel">
-            <div class="pulse-ring"></div>
-            <h1>AR Staging Space</h1>
-            <p>Design your space directly in augmented reality.</p>
-            <div id="ar-button-container"></div>
-            <p class="note">Requires a WebXR compatible browser (Chrome on Android).</p>
-        </div>
-    </div>
 
-    <!-- DOM Overlay for WebXR -->
-    <div id="ar-overlay" style="display: none;">
+<body>
+    <!-- 8th Wall renders the camera feed and 3D scene directly to this canvas -->
+    <canvas id="camera-canvas"></canvas>
+
+    <!-- Custom AR Overlay -->
+    <div id="ar-overlay">
         <div id="hud-top">
             <div id="budget-badge">
                 <span class="budget-label">Total</span>
@@ -44,6 +42,7 @@
         </div>
     </div>
 
+    <!-- Import Map for Three.js -->
     <script type="importmap">
         {
             "imports": {
@@ -54,4 +53,5 @@
     </script>
     <script type="module" src="ar_staging.js"></script>
 </body>
+
 </html>
