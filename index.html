@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="google-site-verification" content="YGU1LixkHHpzsl_RFV90ZTpeSIsuSL4bfzxhOg_ZyBY" />
-    <meta name="description" content="Browse high-fidelity 3D assets and furniture configurations. Preview hyper-realistic spatial layouts directly in your workspace using built-in WebXR AR features.">
+    <meta name="description"
+        content="Browse high-fidelity 3D assets and furniture configurations. Preview hyper-realistic spatial layouts directly in your workspace using built-in WebXR AR features.">
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="shortcut icon" href="https://fortyseven.co.za/favicon.png" type="image/png">
     <title>47 XLVII | Interactive 3D Assests Showroom South Africa</title>
@@ -21,60 +23,91 @@
         }
     </script>
     <style>
-        body { background-color: #f8fafc; color: #0f172a; }
-        .hover-lift { transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease; }
-        .hover-lift:hover { transform: translateY(-8px); box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.1); }
+        body {
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+
+        .hover-lift {
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease;
+        }
+
+        .hover-lift:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.1);
+        }
     </style>
 </head>
+
 <body class="antialiased">
 
-    <div id="admin-card" class="fixed bottom-6 right-6 w-80 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-5 z-50 transform translate-y-10 opacity-0 pointer-events-none transition-all duration-300 ease-out">
+    <div id="admin-card"
+        class="fixed bottom-6 right-6 w-80 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-5 z-50 transform translate-y-10 opacity-0 pointer-events-none transition-all duration-300 ease-out">
         <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
             <div class="flex items-center gap-2 text-xs font-bold tracking-wider text-slate-400 uppercase">
                 <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                 Live Cloud Console
             </div>
-            <button id="admin-exit-btn" class="text-[10px] uppercase font-bold text-slate-400 hover:text-white transition">Exit</button>
+            <button id="admin-exit-btn"
+                class="text-[10px] uppercase font-bold text-slate-400 hover:text-white transition">Exit</button>
         </div>
-        
+
         <div class="flex flex-col gap-2.5">
             <div class="flex items-center justify-between bg-slate-950 px-3 py-2 rounded-lg border border-slate-800/40">
                 <span class="text-xs text-slate-300 font-medium">Furniture</span>
-                <button id="toggle-btn-furniture" class="text-[11px] font-bold px-2.5 py-1 rounded transition-colors">Loading...</button>
+                <button id="toggle-btn-furniture"
+                    class="text-[11px] font-bold px-2.5 py-1 rounded transition-colors">Loading...</button>
             </div>
             <div class="flex items-center justify-between bg-slate-950 px-3 py-2 rounded-lg border border-slate-800/40">
                 <span class="text-xs text-slate-300 font-medium">Hospitality</span>
-                <button id="toggle-btn-hospitality" class="text-[11px] font-bold px-2.5 py-1 rounded transition-colors">Loading...</button>
+                <button id="toggle-btn-hospitality"
+                    class="text-[11px] font-bold px-2.5 py-1 rounded transition-colors">Loading...</button>
             </div>
             <div class="flex items-center justify-between bg-slate-950 px-3 py-2 rounded-lg border border-slate-800/40">
                 <span class="text-xs text-slate-300 font-medium">Industrial</span>
-                <button id="toggle-btn-industrial" class="text-[11px] font-bold px-2.5 py-1 rounded transition-colors">Loading...</button>
+                <button id="toggle-btn-industrial"
+                    class="text-[11px] font-bold px-2.5 py-1 rounded transition-colors">Loading...</button>
             </div>
             <div class="flex items-center justify-between bg-slate-950 px-3 py-2 rounded-lg border border-slate-800/40">
                 <span class="text-xs text-slate-300 font-medium">Architecture</span>
-                <button id="toggle-btn-architecture" class="text-[11px] font-bold px-2.5 py-1 rounded transition-colors">Loading...</button>
+                <button id="toggle-btn-architecture"
+                    class="text-[11px] font-bold px-2.5 py-1 rounded transition-colors">Loading...</button>
             </div>
         </div>
     </div>
 
     <nav class="fixed w-full z-40 top-0 bg-white/80 backdrop-blur-md border-b border-slate-200">
-        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-            <a href="/" class="flex items-center transition hover:opacity-80 font-bold gap-2 text-slate-900">
-                <img src="logo.png" alt="Shot 47 Logo" class="h-8 w-auto object-contain">forty seven
-            </a>
-            <div class="flex items-center gap-6 text-sm font-medium">
-                <a href="/" class="text-blue-600 font-semibold">Showrooms</a>
-                <a href="/about" class="text-slate-600 hover:text-blue-600 transition">About</a>
+        <!-- 3-Column Grid Layout to center the navigation links perfectly -->
+        <div class="max-w-7xl mx-auto px-6 py-1 grid grid-cols-3 items-center">
+
+            <!-- Left Column: Logo -->
+            <div class="flex justify-start">
+                <a href="/" class="flex items-center transition hover:opacity-80">
+                    <img src="LOG.png" alt="47 XLVII Logo" class="h-28 w-auto object-contain" />
+                </a>
             </div>
+
+            <!-- Center Column: Nav Links -->
+            <div class="flex justify-center items-center gap-8 text-sm font-medium">
+                <a href="/" class="text-blue-600 font-semibold">Showrooms</a>
+                <a href="about.html" class="text-slate-600 hover:text-blue-600 transition">About</a>
+            </div>
+
+            <!-- Right Column: Empty spacer to balance the grid layout -->
+            <div></div>
+
         </div>
     </nav>
 
     <div id="content-wrapper">
         <section class="pt-32 pb-12 px-6 max-w-5xl mx-auto text-center">
             <h1 class="text-5xl md:text-6xl font-bold tracking-tight text-slate-900 mb-6">
-                Reality Captured.<br><span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-500 to-blue-700">Flawlessly Deployed.</span>
+                Cutting Edge Tools.<br><span
+                    class="text-transparent bg-clip-text bg-gradient-to-r from-brand-500 to-blue-700">Efficient
+                    E-Commerce.</span>
             </h1>
-            <p class="text-lg text-slate-600 max-w-2xl mx-auto">Select an industry vertical below to view our interactive 3D portfolios.</p>
+            <p class="text-lg text-slate-600 max-w-2xl mx-auto">Select a vertical below to discover practical
+                innovations for your business.</p>
         </section>
 
         <section class="py-12 px-6 max-w-7xl mx-auto mb-20">
@@ -82,37 +115,58 @@
                 Syncing live showroom states from cloud...
             </div>
 
-            <div id="showroom-grid" class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 opacity-0 transition-opacity duration-300">
-                <a href="furniture.html" id="card-furniture" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
-                    <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
-                    <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
+            <div id="showroom-grid"
+                class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 opacity-0 transition-opacity duration-300">
+                <a href="furniture.html" id="card-furniture"
+                    class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+                    <span
+                        class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming
+                        Soon</span>
+                    <div class="image-container h-40 bg-slate-200"><img
+                            src="https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=600&q=80"
+                            class="w-full h-full object-cover"></div>
                     <div class="p-5">
                         <h3 class="card-title font-bold text-slate-900 mb-1">Furniture & Decor</h3>
                         <p class="card-desc text-xs text-slate-500">Retail staging and home decor AR.</p>
                     </div>
                 </a>
-                
-                <a href="hospitality.html" id="card-hospitality" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
-                    <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
-                    <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
+
+                <a href="hospitality.html" id="card-hospitality"
+                    class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+                    <span
+                        class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming
+                        Soon</span>
+                    <div class="image-container h-40 bg-slate-200"><img
+                            src="https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=600&q=80"
+                            class="w-full h-full object-cover"></div>
                     <div class="p-5">
                         <h3 class="card-title font-bold text-slate-900 mb-1">Culinary AR Menus</h3>
                         <p class="card-desc text-xs text-slate-500">Table-side photorealistic food assets.</p>
                     </div>
                 </a>
-                
-                <a href="industrial.html" id="card-industrial" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
-                    <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
-                    <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
+
+                <a href="industrial.html" id="card-industrial"
+                    class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+                    <span
+                        class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming
+                        Soon</span>
+                    <div class="image-container h-40 bg-slate-200"><img
+                            src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=600&q=80"
+                            class="w-full h-full object-cover"></div>
                     <div class="p-5">
                         <h3 class="card-title font-bold text-slate-900 mb-1">Industrial Equipment</h3>
                         <p class="card-desc text-xs text-slate-500">Heavy machinery and engineering scans.</p>
                     </div>
                 </a>
 
-                <a href="architecture.html" id="card-architecture" class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
-                    <span class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming Soon</span>
-                    <div class="image-container h-40 bg-slate-200"><img src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover"></div>
+                <a href="architecture.html" id="card-architecture"
+                    class="showroom-card block bg-white rounded-2xl overflow-hidden border border-slate-200 relative">
+                    <span
+                        class="badge absolute top-3 right-3 z-10 bg-slate-800/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider hidden">Coming
+                        Soon</span>
+                    <div class="image-container h-40 bg-slate-200"><img
+                            src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80"
+                            class="w-full h-full object-cover"></div>
                     <div class="p-5">
                         <h3 class="card-title font-bold text-slate-900 mb-1">Architecture</h3>
                         <p class="card-desc text-xs text-slate-500">Spatial captures and exterior digital twins.</p>
@@ -123,8 +177,10 @@
     </div>
 
     <footer class="w-full bg-white border-t border-slate-200 py-6 px-6">
-        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 font-medium">
-            <p id="copyright-trigger" class="cursor-pointer select-none active:text-slate-600 transition">© 2026 XLVII 47. All rights reserved.</p>
+        <div
+            class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 font-medium">
+            <p id="copyright-trigger" class="cursor-pointer select-none active:text-slate-600 transition">© 2026 XLVII
+                47. All rights reserved.</p>
             <div class="flex gap-4">
                 <a href="/" class="hover:text-slate-600 transition">Showrooms</a>
                 <a href="/about" class="hover:text-slate-600 transition">About</a>
@@ -199,7 +255,7 @@
             renderShowrooms();
         });
 
-        window.toggleCardState = async function(cardId) {
+        window.toggleCardState = async function (cardId) {
             const currentVal = liveStates[cardId] !== false;
             try {
                 await updateDoc(docRef, { [cardId]: !currentVal });
@@ -254,4 +310,5 @@
         }
     </script>
 </body>
+
 </html>

@@ -1,57 +1,104 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="color-scheme" content="light only">
     <link rel="icon" type="image/png" href="favicon.png">
-    <title>Shot 47 XLVII | Dynamic Showroom</title>
+    <title>47 XLVII | Furniture Showroom</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
+        body {
+            background-color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+        }
 
         #main-viewer {
             forced-color-adjust: none;
             color-scheme: light;
-            background-color: transparent; 
+            background-color: transparent;
         }
-        
-        :root { color-scheme: only light; }
-        
-        #viewer-overlay { 
-            display: none; 
+
+        :root {
+            color-scheme: only light;
+        }
+
+        #viewer-overlay {
+            display: none;
             position: fixed;
             inset: 0;
             z-index: 50;
             background-color: white;
         }
-        #viewer-overlay.active { display: flex; animation: slideUp 0.3s ease forwards; }
-        
-        @keyframes slideUp {
-            from { transform: translateY(100%); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
+
+        #viewer-overlay.active {
+            display: flex;
+            animation: slideUp 0.3s ease forwards;
         }
 
-        .admin-controls { display: none; }
-        body.admin-mode .admin-controls { display: inline-flex; }
-        
-        .loader { border: 3px solid #e2e8f0; border-top: 3px solid #0284c7; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes slideUp {
+            from {
+                transform: translateY(100%);
+                opacity: 0;
+            }
 
-        body.modal-open { overflow: hidden; position: fixed; width: 100%; }
-        #main-viewer { touch-action: none; color-scheme: light; }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
 
-        .close-viewer-btn, .nav-btn {
-            z-index: 100; 
+        .admin-controls {
+            display: none;
+        }
+
+        body.admin-mode .admin-controls {
+            display: inline-flex;
+        }
+
+        .loader {
+            border: 3px solid #e2e8f0;
+            border-top: 3px solid #0284c7;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        body.modal-open {
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+        }
+
+        #main-viewer {
+            touch-action: none;
+            color-scheme: light;
+        }
+
+        .close-viewer-btn,
+        .nav-btn {
+            z-index: 100;
             cursor: pointer !important;
             pointer-events: auto;
         }
 
         .close-viewer-btn {
             position: absolute;
-            top: 55px; 
+            top: 55px;
             right: 20px;
             background-color: rgba(255, 255, 255, 0.9);
             backdrop-filter: blur(8px);
@@ -61,81 +108,243 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            border: 1px solid rgba(0,0,0,0.05);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
         }
-        
+
         @uses (padding-top: env(safe-area-inset-top)) {
-            .close-viewer-btn { top: calc(env(safe-area-inset-top) + 45px); }
+            .close-viewer-btn {
+                top: calc(env(safe-area-inset-top) + 45px);
+            }
         }
 
-        .nav-btn:hover, .close-viewer-btn:hover { background-color: #fff; transform: scale(1.1); transition: all 0.2s; }
-        .nav-btn:active { transform: scale(0.9); }
+        .nav-btn:hover,
+        .close-viewer-btn:hover {
+            background-color: #fff;
+            transform: scale(1.1);
+            transition: all 0.2s;
+        }
 
-        html, body {
+        .nav-btn:active {
+            transform: scale(0.9);
+        }
+
+        html,
+        body {
             background-color: #f8fafc !important;
             color: #0f172a !important;
             color-scheme: light !important;
         }
-        
-        #viewer-overlay, #sidebar-info {
+
+        #viewer-overlay,
+        #sidebar-info {
             background-color: #ffffff !important;
             color: #0f172a !important;
         }
-        
+
         #main-viewer {
             background-color: transparent !important;
             --poster-color: transparent !important;
         }
-        
-        nav, .nav-btn, .close-viewer-btn {
+
+        nav,
+        .nav-btn,
+        .close-viewer-btn {
             background-color: rgba(255, 255, 255, 0.9) !important;
+        }
+
+        /* 📏 Bounding Box Vector Layer Styles */
+        #dimension-svg {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 45;
+        }
+
+        .dimension-line {
+            stroke: #64748b;
+            stroke-width: 1.5;
+            stroke-dasharray: 3 3;
+            transition: opacity 0.2s;
+        }
+
+        .box-edge-line {
+            stroke: #cbd5e1;
+            stroke-width: 1;
+            opacity: 0.7;
+        }
+
+        .dimension-tick {
+            fill: #64748b;
+        }
+
+        .dimension-endpoint {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Offset and centered text bubbles */
+        .bb-text-bubble {
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+            border-radius: 4px;
+            padding: 3px 7px;
+            font-size: 10px;
+            font-weight: 700;
+            font-family: monospace;
+            white-space: nowrap;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+            z-index: 46;
+            display: none;
+            align-items: center;
+            transform: translate(-50%, -50%);
+        }
+
+        /* 📐 Global Hide Measurements State */
+        .measurements-hidden #dimension-svg,
+        .measurements-hidden .bb-text-bubble,
+        .measurements-hidden #unit-selector-container,
+        .measurements-hidden #specs-card-container {
+            display: none !important;
+        }
+
+        .dimension-controls-wrapper {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toggle-measurements-btn {
+            background-color: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 999px;
+            padding: 8px 14px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #0f172a;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.12);
+            cursor: pointer;
+        }
+
+        .toggle-measurements-btn:hover {
+            background-color: #fff;
+        }
+
+        .toggle-measurements-btn:active {
+            transform: scale(0.95);
+        }
+
+        .unit-selector {
+            background-color: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 999px;
+            padding: 7px 10px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #0f172a;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.12);
+            cursor: pointer;
+            outline: none;
         }
     </style>
 </head>
+
 <body class="antialiased pb-20">
 
     <nav class="fixed w-full z-40 top-0 bg-white/80 backdrop-blur-md border-b border-slate-200">
-        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-            <a href="index.html" class="font-bold tracking-tight text-xl text-slate-900 hover:text-blue-600 transition"><img src="logo.png" alt="Shot 47 Logo" class="h-8 w-auto object-contain"></a>
-            <span class="text-sm font-semibold text-slate-500 cursor-pointer" ondblclick="toggleAdmin()">Showroom Console</span>
+        <!-- 3-Column Grid Layout -->
+        <div class="max-w-7xl mx-auto px-6 py-1 grid grid-cols-3 items-center">
+
+            <!-- Left Column: Logo -->
+            <div class="flex justify-start">
+                <a href="index.html" class="flex items-center transition hover:opacity-80">
+                    <img src="LOG.png" alt="47 XLVII Logo" class="h-28 w-auto object-contain">
+                </a>
+            </div>
+
+            <!-- Center Column: Nav Links -->
+            <div class="flex justify-center items-center gap-8 text-sm font-medium">
+                <a href="/" class="text-blue-600 font-semibold">Showrooms</a>
+                <a href="about.html" class="text-slate-600 hover:text-blue-600 transition">About</a>
+            </div>
+
+            <!-- Right Column: Console Trigger -->
+            <div class="flex justify-end items-center">
+                <span class="text-sm font-semibold text-slate-500 cursor-pointer" ondblclick="toggleAdmin()">
+                    Showroom Console
+                </span>
+            </div>
+
         </div>
     </nav>
 
     <section class="pt-32 px-6 max-w-7xl mx-auto">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
             <div>
-                <a href="furniture.html" class="text-xs font-bold text-blue-600 hover:text-blue-700 transition uppercase tracking-wider mb-2 inline-flex items-center gap-1">
+                <a href="furniture.html"
+                    class="text-xs font-bold text-blue-600 hover:text-blue-700 transition uppercase tracking-wider mb-2 inline-flex items-center gap-1">
                     ← Back to Departments
                 </a>
                 <h1 id="showroom-page-title" class="text-4xl font-bold text-slate-900 mb-1">Catalog Showroom</h1>
-                <p class="text-slate-600">Select an item to interact in full 3D and project directly onto your space.</p>
+                <p class="text-slate-600">Select an item to interact in full 3D and project directly onto your space.
+                </p>
             </div>
             <div>
-                <button onclick="addNewCard()" class="admin-controls bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-bold shadow-sm hover:bg-blue-700 whitespace-nowrap">
+                <button onclick="addNewCard()"
+                    class="admin-controls bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-bold shadow-sm hover:bg-blue-700 whitespace-nowrap">
                     + Add New Scan
                 </button>
             </div>
         </div>
-        
+
         <div id="model-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6"></div>
     </section>
 
     <div id="viewer-overlay" class="flex-col md:flex-row">
         <button onclick="closeViewer()" class="close-viewer-btn text-slate-900">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
         </button>
 
-        <div id="viewer-frame" class="w-full md:w-2/3 h-[55vh] md:h-full bg-slate-50 relative flex items-center justify-center order-1">
+        <div id="viewer-frame"
+            class="w-full md:w-2/3 h-[55vh] md:h-full bg-slate-50 relative flex items-center justify-center order-1">
+            <div class="dimension-controls-wrapper">
+                <button id="toggle-measurements-btn" onclick="toggleMeasurements()" class="toggle-measurements-btn">📐
+                    Hide
+                    Dimensions</button>
+                <div id="unit-selector-container">
+                    <select id="unit-selector" onchange="changeDimensionUnit(this.value)" class="unit-selector">
+                        <option value="mm">mm</option>
+                        <option value="cm">cm</option>
+                        <option value="m">m</option>
+                    </select>
+                </div>
+            </div>
+
             <div class="absolute inset-0 flex items-center justify-between px-4 z-50 pointer-events-none">
-                <button onclick="changeModel(-1)" class="nav-btn pointer-events-auto bg-white/90 backdrop-blur-md p-3 rounded-full shadow-lg text-slate-900 border border-slate-200">
-                    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"></path></svg>
+                <button onclick="changeModel(-1)"
+                    class="nav-btn pointer-events-auto bg-white/90 backdrop-blur-md p-3 rounded-full shadow-lg text-slate-900 border border-slate-200">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                        <path d="M15 18l-6-6 6-6"></path>
+                    </svg>
                 </button>
-                <button onclick="changeModel(1)" class="nav-btn pointer-events-auto bg-white/90 backdrop-blur-md p-3 rounded-full shadow-lg text-slate-900 border border-slate-200">
-                    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M9 5l6 6-6 6"></path></svg>
+                <button onclick="changeModel(1)"
+                    class="nav-btn pointer-events-auto bg-white/90 backdrop-blur-md p-3 rounded-full shadow-lg text-slate-900 border border-slate-200">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                        <path d="M9 5l6 6-6 6"></path>
+                    </svg>
                 </button>
             </div>
             <div id="loading-ui" class="absolute inset-0 flex flex-col items-center justify-center z-40 bg-slate-50">
@@ -144,289 +353,542 @@
             </div>
         </div>
 
-        <div id="sidebar-info" class="w-full md:w-1/3 p-8 md:p-12 flex flex-col justify-center bg-white order-2 border-t md:border-t-0 md:border-l border-slate-200">
-            <div class="flex items-center justify-between gap-4 mb-2">
-                <div class="text-xs font-bold text-blue-600 uppercase tracking-wider">Digital Twin</div>
-                
-                <button onclick="triggerAR()" class="bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold px-3.5 py-1.5 rounded-full shadow-sm flex items-center gap-1.5 transition">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                    </svg>
-                    View in AR Space
-                </button>
+        <div id="sidebar-info"
+            class="w-full md:w-1/3 p-8 md:p-12 flex flex-col justify-between bg-white order-2 border-t md:border-t-0 md:border-l border-slate-200 overflow-y-auto">
+            <div>
+                <div class="flex items-center justify-between gap-4 mb-2">
+                    <div class="text-xs font-bold text-blue-600 uppercase tracking-wider">Digital Twin</div>
+
+                    <!-- Hidden on PC screens (md and larger) via Tailwind class -->
+                    <button onclick="triggerAR()"
+                        class="md:hidden bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold px-3.5 py-1.5 rounded-full shadow-sm flex items-center gap-1.5 transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5"
+                            viewBox="0 0 24 24">
+                            <path
+                                d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                            </path>
+                        </svg>
+                        View in AR Space
+                    </button>
+                </div>
+
+                <h2 id="sidebar-title" class="text-3xl font-bold text-slate-900 mb-4">Model Title</h2>
+                <p id="sidebar-desc" class="text-slate-600 leading-relaxed mb-6">Model Description</p>
+
+                <!-- 📋 Dynamic Specifications Info Card -->
+                <div id="specs-card-container" class="p-5 bg-slate-50 rounded-xl border border-slate-200 mb-6">
+                    <p
+                        class="text-xs text-slate-900 font-bold mb-3 uppercase tracking-wider border-b border-slate-200 pb-2">
+                        Product Specifications</p>
+                    <div class="space-y-2 text-xs">
+                        <div class="flex justify-between"><span class="text-slate-500 font-medium">Weight
+                                Capacity:</span> <span id="spec-weight" class="font-semibold text-slate-900">N/A</span>
+                        </div>
+                        <div class="flex justify-between"><span class="text-slate-500 font-medium">Level of Assembly
+                                Required:</span> <span id="spec-assembly"
+                                class="font-semibold text-slate-900">N/A</span></div>
+                        <div class="flex justify-between"><span class="text-slate-500 font-medium">Material:</span>
+                            <span id="spec-material" class="font-semibold text-slate-900">N/A</span>
+                        </div>
+                        <div class="flex justify-between"><span class="text-slate-500 font-medium">Material
+                                Frame:</span> <span id="spec-frame" class="font-semibold text-slate-900">N/A</span>
+                        </div>
+                        <div class="flex justify-between"><span class="text-slate-500 font-medium">Material Legs:</span>
+                            <span id="spec-legs" class="font-semibold text-slate-900">N/A</span>
+                        </div>
+                        <div class="flex justify-between"><span class="text-slate-500 font-medium">Assembly Cost:</span>
+                            <span id="spec-cost" class="font-semibold text-slate-900">N/A</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <h2 id="sidebar-title" class="text-3xl font-bold text-slate-900 mb-4">Model Title</h2>
-            <p id="sidebar-desc" class="text-slate-600 leading-relaxed mb-8">Model Description</p>
-            <div class="p-5 bg-slate-50 rounded-xl border border-slate-100">
+            <div class="p-4 bg-slate-50 rounded-xl border border-slate-100 mt-auto">
                 <p class="text-xs text-slate-500 font-bold mb-2 uppercase tracking-wider">Interaction Guide</p>
-                <ul class="text-sm text-slate-600 space-y-1">
+                <ul class="text-xs text-slate-600 space-y-1">
                     <li>• <b>Desktop:</b> Drag to rotate.</li>
                     <li>• <b>Mobile:</b> Swipe to rotate.</li>
-                    <li>• <b>AR:</b> Tap the blue button on your smartphone.</li>
+                    <li>• <b>AR:</b> Bounding line data maps 1:1 on WebXR floor displays.</li>
                 </ul>
             </div>
         </div>
     </div>
 
-<script type="module">
-    document.documentElement.style.setProperty('color-scheme', 'light');
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    
-    // 📦 IMPORT NATIVE FIREBASE STORAGE TOOLS
-    import { getStorage, ref, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+    <script type="module">
+        document.documentElement.style.setProperty('color-scheme', 'light');
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getStorage, ref, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
-    const firebaseConfig = {
-        apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
-        authDomain: "shot47-database.firebaseapp.com",
-        projectId: "shot47-database",
-        storageBucket: "shot47-database.firebasestorage.app",
-        messagingSenderId: "77237094269",
-        appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
-    };
+        const firebaseConfig = {
+            apiKey: "AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY",
+            authDomain: "shot47-database.firebaseapp.com",
+            projectId: "shot47-database",
+            storageBucket: "shot47-database.firebasestorage.app",
+            messagingSenderId: "77237094269",
+            appId: "1:77237094269:web:a90a6c6239cb66e3102e14"
+        };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const auth = getAuth(app);
-    
-    // 🛠️ INITIALIZE STORAGE ENGINE
-    const storage = getStorage(app);
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const storage = getStorage(app);
 
-    const categoryName = "carpet_models"; 
-    
-    const cleanHeaderTitle = categoryName.replace('_', ' ').toUpperCase();
-    document.getElementById('showroom-page-title').innerText = cleanHeaderTitle;
+        const categoryName = "carpet_models";
 
-    let modelsData = [];
-    let currentModelIndex = 0;
+        const cleanHeaderTitle = categoryName.replace('_', ' ').toUpperCase();
+        document.getElementById('showroom-page-title').innerText = cleanHeaderTitle;
 
-    // --- NAVIGATION & VIEWER LOGIC ---
-    function ensureViewerExists() {
-        let viewer = document.getElementById('main-viewer');
-        const viewerContainer = document.getElementById('viewer-frame');
-        
-        if (!viewer) {
-            viewer = document.createElement('model-viewer');
-            viewer.id = 'main-viewer';
-            viewer.className = 'w-full h-full';
-            viewer.setAttribute('loading', 'eager');
-            viewer.setAttribute('ar', '');
-            
-            // WebXR inline depth configuration forced to the front to unlock occlusion maps
-            viewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
-            viewer.setAttribute('ar-placement', 'floor');
+        let modelsData = [];
+        let currentModelIndex = 0;
 
-            // Explicit scale locking locks dimensions 1:1 in place
-            viewer.setAttribute('ar-scale', 'fixed');
-            //viewer.setAttribute('disable-zoom', '');
-            
-            viewer.setAttribute('camera-controls', '');
-            viewer.setAttribute('shadow-intensity', '0.6');
-            viewer.setAttribute('environment-image', 'neutral');
-            viewer.setAttribute('max-camera-orbit', 'auto 75deg auto');
-            
-            viewerContainer.appendChild(viewer);
-        }
-        return viewer;
-    }
+        let measurementsVisible = true;
+        let currentUnit = "mm";
+        let rawDimensions = { x: 0, y: 0, z: 0 };
 
-    window.openViewer = function(index) {
-        currentModelIndex = index;
-        const overlay = document.getElementById('viewer-overlay');
-        overlay.classList.add('active');
-        document.body.classList.add('modal-open');
-        updateActiveModel();
-    };
-
-    // 🚀 FIXED: Aggressively cleans old contexts before spinning up a new asset link
-    async function updateActiveModel() {
-        const model = modelsData[currentModelIndex];
-        const loader = document.getElementById('loading-ui');
-        
-        // 1. Force close and dismantle any existing viewer instance BEFORE building the new one
-        const oldViewer = document.getElementById('main-viewer');
-        if (oldViewer) {
-            const gl = oldViewer.shadowRoot?.querySelector('canvas')?.getContext('webgl') || 
-                       oldViewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2');
-            if (gl) gl.getExtension('WEBGL_lose_context')?.loseContext();
-            if (typeof oldViewer.dispose === 'function') oldViewer.dispose();
-            oldViewer.src = ''; 
-            oldViewer.iosSrc = ''; 
-            oldViewer.remove();
-        }
-
-        const viewer = ensureViewerExists();
-        
-        document.getElementById('sidebar-title').innerText = model.title;
-        document.getElementById('sidebar-desc').innerText = model.desc;
-        loader.style.display = 'flex';
-
-        try {
-            const glbRef = ref(storage, `models/glb/${model.glb}`);
-            const usdzRef = ref(storage, `models/usdz/${model.usdz}`);
-
-            const glbUrl = await getDownloadURL(glbRef);
-            const usdzUrl = await getDownloadURL(usdzRef);
-
-            viewer.src = glbUrl;
-            viewer.iosSrc = usdzUrl + "#allowsContentScaling=0&occlusion=1";
-        } catch (error) {
-            console.error("Firebase Storage Retrieval Failure:", error);
-        }
-
-        viewer.addEventListener('load', () => { loader.style.display = 'none'; }, { once: true });
-    }
-
-    // 🔒 RESTORED GLOBAL ACCESS ROUTE TO ARROW NAV CONTROLS
-    window.changeModel = function(direction) {
-        let newIndex = currentModelIndex + direction;
-        if (newIndex >= modelsData.length) newIndex = 0;
-        if (newIndex < 0) newIndex = modelsData.length - 1;
-        currentModelIndex = newIndex;
-        updateActiveModel();
-    };
-
-    // 🚀 FIXED: Thoroughly wipes memory clean when the user closes the overlay panel
-    window.closeViewer = function() {
-        document.getElementById('viewer-overlay').classList.remove('active');
-        const viewer = document.getElementById('main-viewer');
-        if(viewer) {
-            const gl = viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl') || 
-                       viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2');
-            
-            // Explicitly force the hardware to drop the current thread context mapping
-            if (gl) {
-                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
-                gl.finish();
-                gl.getExtension('WEBGL_lose_context')?.loseContext();
+        function applyMeasurementsVisibility() {
+            const overlayContainer = document.getElementById('viewer-overlay');
+            if (overlayContainer) {
+                overlayContainer.classList.toggle('measurements-hidden', !measurementsVisible);
             }
-            
-            if (typeof viewer.dispose === 'function') viewer.dispose();
-            
-            viewer.src = ''; 
-            viewer.iosSrc = ''; 
-            viewer.remove();
+            const btn = document.getElementById('toggle-measurements-btn');
+            if (btn) btn.textContent = measurementsVisible ? '📐 Hide Dimensions' : '📐 Show Dimensions';
         }
-        document.body.classList.remove('modal-open');
-    };
 
-    window.triggerAR = function() {
-        const viewer = document.getElementById('main-viewer');
-        if (viewer && typeof viewer.activateAR === 'function') {
-            viewer.activateAR();
-        } else {
-            alert("The 3D engine is preparing your workspace scene context. Try again in a moment.");
+        window.toggleMeasurements = function () {
+            measurementsVisible = !measurementsVisible;
+            applyMeasurementsVisibility();
+        };
+
+        window.changeDimensionUnit = function (unit) {
+            currentUnit = unit;
+            updateDimensionTextLabels();
+        };
+
+        function formatDimension(metersValue) {
+            if (currentUnit === "cm") {
+                return `${(metersValue * 100).toFixed(1)}cm`;
+            } else if (currentUnit === "m") {
+                return `${metersValue.toFixed(2)}m`;
+            }
+            return `${Math.round(metersValue * 1000)}mm`;
         }
-    };
 
-    // --- FIREBASE LOGIC ---
-    window.toggleAdmin = async function() {
-        if(document.body.classList.contains('admin-mode')) { await signOut(auth); return; }
-        const email = prompt("Admin Email:");
-        const pass = prompt("Admin Password:");
-        if(email && pass) {
-            try { await signInWithEmailAndPassword(auth, email, pass); } catch (e) { alert("Login Failed"); }
+        function updateDimensionTextLabels() {
+            const viewer = document.getElementById('main-viewer');
+            if (!viewer || !rawDimensions.x) return;
+
+            const midX = viewer.querySelector('#mid-x');
+            const midY = viewer.querySelector('#mid-y');
+            const midZ = viewer.querySelector('#mid-z');
+
+            if (midX) midX.innerText = `W: ${formatDimension(rawDimensions.x)}`;
+            if (midY) midY.innerText = `H: ${formatDimension(rawDimensions.y)}`;
+            if (midZ) midZ.innerText = `D: ${formatDimension(rawDimensions.z)}`;
         }
-    };
 
-    window.addNewCard = async function() {
-        const title = prompt("Scan Title:"); if(!title) return;
-        const desc = prompt("Description:");
-        
-        // Simplicity: Input plain filename paths directly (e.g., "Turkish-Carpet-7.jpg")
-        const imgName = prompt("Image Filename in Storage (e.g., product.jpg):");
-        const glbName = prompt("GLB Filename in Storage (e.g., model.glb):");
-        const usdzName = prompt("USDZ Filename in Storage (e.g., model.usdz):");
-        
-        try {
-            await addDoc(collection(db, categoryName), {
-                title, 
-                desc, 
-                img: imgName, // Stores the clean string name directly in Firestore
-                glb: glbName, 
-                usdz: usdzName,
-                createdAt: new Date()
-            });
-            loadFromDatabase();
-        } catch (e) { alert("Error adding document reference"); }
-    };
+        let boundingBoxLoopGeneration = 0;
 
-    window.deleteCard = async function(db_id) {
-        if(confirm("Delete?")) { await deleteDoc(doc(db, categoryName, db_id)); loadFromDatabase(); }
-    };
+        function ensureViewerExists() {
+            let viewer = document.getElementById('main-viewer');
+            const viewerContainer = document.getElementById('viewer-frame');
 
-    async function loadFromDatabase() {
-        const grid = document.getElementById('model-grid');
-        grid.innerHTML = '<p class="text-center col-span-full py-10 text-slate-400">Loading catalog...</p>';
-        try {
-            const querySnapshot = await getDocs(collection(db, categoryName));
-            modelsData = [];
-            querySnapshot.forEach((doc) => { modelsData.push({ db_id: doc.id, ...doc.data() }); });
-            renderGrid();
-        } catch (e) { console.error(e); }
-    }
+            if (!viewer) {
+                viewer = document.createElement('model-viewer');
+                viewer.id = 'main-viewer';
+                viewer.className = 'w-full h-full';
+                viewer.setAttribute('loading', 'eager');
+                viewer.setAttribute('ar', '');
+                viewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+                viewer.setAttribute('ar-placement', 'floor');
+                viewer.setAttribute('ar-scale', 'fixed');
+                viewer.setAttribute('camera-controls', '');
+                viewer.setAttribute('shadow-intensity', '0.6');
+                viewer.setAttribute('environment-image', 'neutral');
+                viewer.setAttribute('max-camera-orbit', 'auto 75deg auto');
 
-    function renderGrid() {
-        const grid = document.getElementById('model-grid');
-        grid.innerHTML = '';
-        modelsData.forEach((model, index) => {
-            const imgId = `card-img-${index}`;
-            const cardHTML = `
-            <div class="group bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition duration-300">
-                <div class="w-full aspect-[4/3] bg-slate-50 overflow-hidden relative border-b border-slate-100 cursor-pointer" onclick="openViewer(${index})">
-                    <img id="${imgId}" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100%' height='100%' fill='%23f1f5f9'/></svg>" class="w-full h-full object-cover group-hover:scale-105 transition duration-500 opacity-0" alt="${model.title}">
-                </div>
-                <div class="p-4 flex-1 flex flex-col justify-between">
-                    <div class="cursor-pointer" onclick="openViewer(${index})">
-                        <h3 class="font-bold text-slate-900 text-sm md:text-base tracking-tight leading-snug group-hover:text-blue-600 transition mb-1 uppercase">${model.title}</h3>
-                        <p class="text-xs text-slate-500 line-clamp-2 leading-relaxed">${model.desc}</p>
+                // 🛑 LOCK CAMERA POSITION & PREVENT MOVING/TRANSLATING
+                viewer.setAttribute('disable-zoom', ''); // Stops zoom in/out
+                viewer.setAttribute('disable-pan', '');  // Stops dragging/translating the model away
+                viewer.setAttribute('disable-tap', '');  // Stops model from shifting position on click/tap
+
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                svg.id = "dimension-svg";
+
+                const svgContent = `
+                <defs>
+                    <marker id="tick" markerWidth="4" markerHeight="4" refX="2" refY="2">
+                        <circle cx="2" cy="2" r="1.5" class="dimension-tick"/>
+                    </marker>
+                </defs>
+                <line id="line-x" class="dimension-line" marker-start="url(#tick)" marker-end="url(#tick)" />
+                <line id="line-y" class="dimension-line" marker-start="url(#tick)" marker-end="url(#tick)" />
+                <line id="line-z" class="dimension-line" marker-start="url(#tick)" marker-end="url(#tick)" />
+                <line id="wire-1" class="box-edge-line" /> <line id="wire-2" class="box-edge-line" />
+                <line id="wire-3" class="box-edge-line" /> <line id="wire-4" class="box-edge-line" />
+                <line id="wire-5" class="box-edge-line" /> <line id="wire-6" class="box-edge-line" />
+                <line id="wire-7" class="box-edge-line" /> <line id="wire-8" class="box-edge-line" />
+                <line id="wire-9" class="box-edge-line" />
+            `;
+                svg.innerHTML = svgContent;
+                viewerContainer.appendChild(svg);
+
+                const baseIds = [
+                    'x-min', 'x-max', 'y-min', 'y-max', 'z-min', 'z-max',
+                    'corner-bfl', 'corner-bbl', 'corner-tbl', 'corner-tfl', 'corner-tbr',
+                    'mid-x', 'mid-y', 'mid-z'
+                ];
+
+                baseIds.forEach(id => {
+                    const el = document.createElement('div');
+                    el.id = id;
+                    el.className = id.startsWith('mid-') ? "bb-text-bubble" : "dimension-endpoint";
+                    el.setAttribute('slot', `hotspot-${id}`);
+                    viewer.appendChild(el);
+                });
+
+                viewerContainer.appendChild(viewer);
+                startBoundingBoxRenderLoop(viewer);
+            }
+            return viewer;
+        }
+
+        window.openViewer = function (index) {
+            currentModelIndex = index;
+            const overlay = document.getElementById('viewer-overlay');
+            overlay.classList.add('active');
+            document.body.classList.add('modal-open');
+            applyMeasurementsVisibility();
+            updateActiveModel();
+        };
+
+        async function updateActiveModel() {
+            const model = modelsData[currentModelIndex];
+            const loader = document.getElementById('loading-ui');
+
+            const oldViewer = document.getElementById('main-viewer');
+            const oldSvg = document.getElementById('dimension-svg');
+            if (oldViewer) {
+                if (typeof oldViewer.dispose === 'function') oldViewer.dispose();
+                oldViewer.remove();
+            }
+            if (oldSvg) oldSvg.remove();
+
+            const viewer = ensureViewerExists();
+
+            document.getElementById('sidebar-title').innerText = model.title;
+            document.getElementById('sidebar-desc').innerText = model.desc;
+
+            // Populate Specs Card Data
+            document.getElementById('spec-weight').innerText = model.weightCapacity || 'N/A';
+            document.getElementById('spec-assembly').innerText = model.assemblyLevel || 'N/A';
+            document.getElementById('spec-material').innerText = model.material || 'N/A';
+            document.getElementById('spec-frame').innerText = model.materialFrame || 'N/A';
+            document.getElementById('spec-legs').innerText = model.materialLegs || 'N/A';
+            document.getElementById('spec-cost').innerText = model.assemblyCost || 'N/A';
+
+            loader.style.display = 'flex';
+
+            const bubbles = viewer.querySelectorAll('.bb-text-bubble');
+            bubbles.forEach(b => b.style.display = 'none');
+
+            viewer.addEventListener('load', () => {
+                loader.style.display = 'none';
+
+                const size = viewer.getDimensions();
+                const center = viewer.getBoundingBoxCenter();
+                rawDimensions = size;
+
+                const xMin = center.x - (size.x / 2);
+                const xMax = center.x + (size.x / 2);
+                const yMin = center.y - (size.y / 2);
+                const yMax = center.y + (size.y / 2);
+                const zMin = center.z - (size.z / 2);
+                const zMax = center.z + (size.z / 2);
+
+                const move = (id, x, y, z) =>
+                    viewer.updateHotspot({ name: `hotspot-${id}`, position: `${x} ${y} ${z}` });
+
+                // Corner Nodes
+                move('x-min', xMin, yMin, zMax);
+                move('x-max', xMax, yMin, zMax);
+                move('y-min', xMax, yMin, zMax);
+                move('y-max', xMax, yMax, zMax);
+                move('z-min', xMax, yMin, zMin);
+                move('z-max', xMax, yMin, zMax);
+
+                // Outward offset on badges
+                const textOffset = 0.06;
+                move('mid-x', center.x, yMin - textOffset, zMax + textOffset);
+                move('mid-y', xMax + textOffset, center.y, zMax + textOffset);
+                move('mid-z', xMax + textOffset, yMin - textOffset, center.z);
+
+                updateDimensionTextLabels();
+
+                // Corner Nodes Map
+                move('corner-bfl', xMin, yMin, zMax);
+                move('corner-bbl', xMin, yMin, zMin);
+                move('corner-tbl', xMin, yMax, zMin);
+                move('corner-tfl', xMin, yMax, zMax);
+                move('corner-tbr', xMax, yMax, zMin);
+
+                bubbles.forEach(b => b.style.display = 'flex');
+            }, { once: true });
+
+            try {
+                const glbRef = ref(storage, `models/glb/${model.glb}`);
+                const usdzRef = ref(storage, `models/usdz/${model.usdz}`);
+                const [glbUrl, usdzUrl] = await Promise.all([getDownloadURL(glbRef), getDownloadURL(usdzRef)]);
+
+                viewer.src = glbUrl;
+                viewer.iosSrc = usdzUrl + "#allowsContentScaling=0&occlusion=1";
+            } catch (error) {
+                console.error("Firebase Storage Retrieval Failure:", error);
+            }
+        }
+
+        function startBoundingBoxRenderLoop(viewer) {
+            const myGeneration = ++boundingBoxLoopGeneration;
+
+            const lx = document.getElementById('line-x');
+            const ly = document.getElementById('line-y');
+            const lz = document.getElementById('line-z');
+
+            const w1 = document.getElementById('wire-1'); const w2 = document.getElementById('wire-2');
+            const w3 = document.getElementById('wire-3'); const w4 = document.getElementById('wire-4');
+            const w5 = document.getElementById('wire-5'); const w6 = document.getElementById('wire-6');
+            const w7 = document.getElementById('wire-7'); const w8 = document.getElementById('wire-8');
+            const w9 = document.getElementById('wire-9');
+
+            function drawOverlay() {
+                if (myGeneration !== boundingBoxLoopGeneration) return;
+                if (!document.getElementById('main-viewer')) return;
+
+                const hxMin = viewer.queryHotspot('hotspot-x-min');
+                const hxMax = viewer.queryHotspot('hotspot-x-max');
+                const hyMin = viewer.queryHotspot('hotspot-y-min');
+                const hyMax = viewer.queryHotspot('hotspot-y-max');
+                const hzMin = viewer.queryHotspot('hotspot-z-min');
+                const hzMax = viewer.queryHotspot('hotspot-z-max');
+
+                if (hxMin && hxMax && lx) {
+                    lx.setAttribute('x1', hxMin.canvasPosition.x); lx.setAttribute('y1', hxMin.canvasPosition.y);
+                    lx.setAttribute('x2', hxMax.canvasPosition.x); lx.setAttribute('y2', hxMax.canvasPosition.y);
+                }
+                if (hyMin && hyMax && ly) {
+                    ly.setAttribute('x1', hyMin.canvasPosition.x); ly.setAttribute('y1', hyMin.canvasPosition.y);
+                    ly.setAttribute('x2', hyMax.canvasPosition.x); ly.setAttribute('y2', hyMax.canvasPosition.y);
+                }
+                if (hzMin && hzMax && lz) {
+                    lz.setAttribute('x1', hzMin.canvasPosition.x); lz.setAttribute('y1', hzMin.canvasPosition.y);
+                    lz.setAttribute('x2', hzMax.canvasPosition.x); lz.setAttribute('y2', hzMax.canvasPosition.y);
+                }
+
+                if (w1) {
+                    const cBFL = viewer.queryHotspot('hotspot-corner-bfl');
+                    const cBBL = viewer.queryHotspot('hotspot-corner-bbl');
+                    const cTBL = viewer.queryHotspot('hotspot-corner-tbl');
+                    const cTFL = viewer.queryHotspot('hotspot-corner-tfl');
+                    const cTBR = viewer.queryHotspot('hotspot-corner-tbr');
+
+                    if (cBFL && cBBL && cTBL && cTFL && cTBR && hxMin && hxMax && hyMin && hyMax && hzMin && hzMax) {
+                        w1.setAttribute('x1', cBFL.canvasPosition.x); w1.setAttribute('y1', cBFL.canvasPosition.y);
+                        w1.setAttribute('x2', cBBL.canvasPosition.x); w1.setAttribute('y2', cBBL.canvasPosition.y);
+
+                        w2.setAttribute('x1', cBBL.canvasPosition.x); w2.setAttribute('y1', cBBL.canvasPosition.y);
+                        w2.setAttribute('x2', cTBL.canvasPosition.x); w2.setAttribute('y2', cTBL.canvasPosition.y);
+
+                        w3.setAttribute('x1', cTBL.canvasPosition.x); w3.setAttribute('y1', cTBL.canvasPosition.y);
+                        w3.setAttribute('x2', cTFL.canvasPosition.x); w3.setAttribute('y2', cTFL.canvasPosition.y);
+
+                        w4.setAttribute('x1', cTFL.canvasPosition.x); w4.setAttribute('y1', cTFL.canvasPosition.y);
+                        w4.setAttribute('x2', cBFL.canvasPosition.x); w4.setAttribute('y2', cBFL.canvasPosition.y);
+
+                        w5.setAttribute('x1', cTFL.canvasPosition.x); w5.setAttribute('y1', cTFL.canvasPosition.y);
+                        w5.setAttribute('x2', hyMax.canvasPosition.x); w5.setAttribute('y2', hyMax.canvasPosition.y);
+
+                        w6.setAttribute('x1', cTBL.canvasPosition.x); w6.setAttribute('y1', cTBL.canvasPosition.y);
+                        w6.setAttribute('x2', cTBR.canvasPosition.x); w6.setAttribute('y2', cTBR.canvasPosition.y);
+
+                        w7.setAttribute('x1', cTBR.canvasPosition.x); w7.setAttribute('y1', cTBR.canvasPosition.y);
+                        w7.setAttribute('x2', hzMin.canvasPosition.x); w7.setAttribute('y2', hzMin.canvasPosition.y);
+
+                        w8.setAttribute('x1', cTBR.canvasPosition.x); w8.setAttribute('y1', cTBR.canvasPosition.y);
+                        w8.setAttribute('x2', hyMax.canvasPosition.x); w8.setAttribute('y2', hyMax.canvasPosition.y);
+
+                        w9.setAttribute('x1', cBBL.canvasPosition.x); w9.setAttribute('y1', cBBL.canvasPosition.y);
+                        w9.setAttribute('x2', hzMin.canvasPosition.x); w9.setAttribute('y2', hzMin.canvasPosition.y);
+                    }
+                }
+                requestAnimationFrame(drawOverlay);
+            }
+            requestAnimationFrame(drawOverlay);
+        }
+
+        window.changeModel = function (direction) {
+            let newIndex = currentModelIndex + direction;
+            if (newIndex >= modelsData.length) newIndex = 0;
+            if (newIndex < 0) newIndex = modelsData.length - 1;
+            currentModelIndex = newIndex;
+            updateActiveModel();
+        };
+
+        window.closeViewer = function () {
+            document.getElementById('viewer-overlay').classList.remove('active');
+            const viewer = document.getElementById('main-viewer');
+            const svg = document.getElementById('dimension-svg');
+            boundingBoxLoopGeneration++;
+            if (viewer) {
+                const gl = viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl') ||
+                    viewer.shadowRoot?.querySelector('canvas')?.getContext('webgl2');
+                if (gl) {
+                    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+                    gl.finish();
+                    gl.getExtension('WEBGL_lose_context')?.loseContext();
+                }
+                if (typeof viewer.dispose === 'function') viewer.dispose();
+                viewer.remove();
+            }
+            if (svg) svg.remove();
+            document.body.classList.remove('modal-open');
+        };
+
+        window.triggerAR = function () {
+            const viewer = document.getElementById('main-viewer');
+            if (viewer && typeof viewer.activateAR === 'function') {
+                viewer.activateAR();
+            } else {
+                alert("The 3D engine is preparing your workspace scene context. Try again in a moment.");
+            }
+        };
+
+        // --- FIREBASE LOGIC ---
+        window.toggleAdmin = async function () {
+            if (document.body.classList.contains('admin-mode')) { await signOut(auth); return; }
+            const email = prompt("Admin Email:");
+            const pass = prompt("Admin Password:");
+            if (email && pass) {
+                try { await signInWithEmailAndPassword(auth, email, pass); } catch (e) { alert("Login Failed"); }
+            }
+        };
+
+        window.addNewCard = async function () {
+            const title = prompt("Scan Title:"); if (!title) return;
+            const desc = prompt("Description:");
+            const imgName = prompt("Image Filename in Storage (e.g., chair.jpg):");
+            const glbName = prompt("GLB Filename in Storage (e.g., chair.glb):");
+            const usdzName = prompt("USDZ Filename in Storage (e.g., chair.usdz):");
+
+            const weightCapacity = prompt("Weight Capacity (e.g. 150 kg):");
+            const assemblyLevel = prompt("Level of Assembly Required (e.g. Partial Assembly):");
+            const material = prompt("Material (e.g. Genuine Leather):");
+            const materialFrame = prompt("Material Frame (e.g. Solid Oak):");
+            const materialLegs = prompt("Material Legs (e.g. Matte Black Steel):");
+            const assemblyCost = prompt("Assembly Cost (e.g. R450 / Free):");
+
+            try {
+                await addDoc(collection(db, categoryName), {
+                    title,
+                    desc,
+                    img: imgName,
+                    glb: glbName,
+                    usdz: usdzName,
+                    weightCapacity: weightCapacity || "",
+                    assemblyLevel: assemblyLevel || "",
+                    material: material || "",
+                    materialFrame: materialFrame || "",
+                    materialLegs: materialLegs || "",
+                    assemblyCost: assemblyCost || "",
+                    createdAt: new Date()
+                });
+                loadFromDatabase();
+            } catch (e) { alert("Error adding document reference"); }
+        };
+
+        window.deleteCard = async function (db_id) {
+            if (confirm("Delete?")) { await deleteDoc(doc(db, categoryName, db_id)); loadFromDatabase(); }
+        };
+
+        async function loadFromDatabase() {
+            const grid = document.getElementById('model-grid');
+            grid.innerHTML = '<p class="text-center col-span-full py-10 text-slate-400">Loading catalog...</p>';
+            try {
+                const querySnapshot = await getDocs(collection(db, categoryName));
+                modelsData = [];
+                querySnapshot.forEach((doc) => { modelsData.push({ db_id: doc.id, ...doc.data() }); });
+                renderGrid();
+            } catch (e) { console.error(e); }
+        }
+
+        function renderGrid() {
+            const grid = document.getElementById('model-grid');
+            grid.innerHTML = '';
+            modelsData.forEach((model, index) => {
+                const imgId = `card-img-${index}`;
+                const cardHTML = `
+                <div class="group bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition duration-300">
+                    <div class="w-full aspect-[4/3] bg-slate-50 overflow-hidden relative border-b border-slate-100 cursor-pointer" onclick="openViewer(${index})">
+                        <img id="${imgId}" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100%' height='100%' fill='%23f1f5f9'/></svg>" class="w-full h-full object-cover group-hover:scale-105 transition duration-500 opacity-0" alt="${model.title}">
                     </div>
-                    <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                        <span class="text-[11px] font-bold tracking-wider text-slate-400 uppercase">Interactive 3D</span>
-                        <div class="flex items-center gap-1">
-                            <button onclick="deleteCard('${model.db_id}')" class="admin-controls text-red-500 p-1 hover:text-red-700 transition mr-1">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                            </button>
-                            <span onclick="openViewer(${index})" class="text-blue-600 text-xs font-semibold cursor-pointer flex items-center gap-0.5 group-hover:translate-x-0.5 transition duration-300">View →</span>
+                    <div class="p-4 flex-1 flex flex-col justify-between">
+                        <div class="cursor-pointer" onclick="openViewer(${index})">
+                            <h3 class="font-bold text-slate-900 text-sm md:text-base tracking-tight leading-snug group-hover:text-blue-600 transition mb-1 uppercase">${model.title}</h3>
+                            <p class="text-xs text-slate-500 line-clamp-2 leading-relaxed">${model.desc}</p>
+                        </div>
+                        <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                            <span class="text-[11px] font-bold tracking-wider text-slate-400 uppercase">Interactive 3D</span>
+                            <div class="flex items-center gap-1">
+                                <button onclick="deleteCard('${model.db_id}')" class="admin-controls text-red-500 p-1 hover:text-red-700 transition mr-1">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                </button>
+                                <span onclick="openViewer(${index})" class="text-blue-600 text-xs font-semibold cursor-pointer flex items-center gap-0.5 group-hover:translate-x-0.5 transition duration-300">View →</span>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>`;
-            grid.insertAdjacentHTML('beforeend', cardHTML);
+                </div>`;
+                grid.insertAdjacentHTML('beforeend', cardHTML);
 
-            // Fetch the image down url string asynchronously from Firebase Storage
-            const imgElement = document.getElementById(imgId);
-            if (model.img) {
-                // If the stored value is already a full secure URL, use it directly
-                if (model.img.startsWith('http')) {
-                    imgElement.src = model.img;
-                    imgElement.classList.remove('opacity-0');
-                } else {
-                    // Otherwise resolve it from your storage bucket thumbnails directory
-                    const thumbnailRef = ref(storage, `models/thumbnails/${model.img}`);
-                    getDownloadURL(thumbnailRef)
-                        .then((url) => {
-                            imgElement.src = url;
-                            imgElement.classList.remove('opacity-0');
-                        })
-                        .catch((error) => {
-                            console.error(`Failed to load thumbnail: ${model.img}`, error);
-                            imgElement.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80";
-                            imgElement.classList.remove('opacity-0');
-                        });
+                const imgElement = document.getElementById(imgId);
+                if (model.img) {
+                    if (model.img.startsWith('http')) {
+                        imgElement.src = model.img;
+                        imgElement.classList.remove('opacity-0');
+                    } else {
+                        const thumbnailRef = ref(storage, `models/thumbnails/${model.img}`);
+                        getDownloadURL(thumbnailRef)
+                            .then((url) => {
+                                imgElement.src = url;
+                                imgElement.classList.remove('opacity-0');
+                            })
+                            .catch((error) => {
+                                console.error(`Failed to load thumbnail: ${model.img}`, error);
+                                imgElement.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80";
+                                imgElement.classList.remove('opacity-0');
+                            });
+                    }
                 }
-            }
+            });
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) document.body.classList.add('admin-mode');
+            else document.body.classList.remove('admin-mode');
         });
-    }
 
-    onAuthStateChanged(auth, (user) => {
-        if (user) document.body.classList.add('admin-mode');
-        else document.body.classList.remove('admin-mode');
-    });
-
-    loadFromDatabase();
-</script>
+        loadFromDatabase();
+    </script>
+    <footer class="w-full bg-white border-t border-slate-200 py-6 px-6">
+        <div
+            class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 font-medium">
+            <p id="copyright-trigger" class="cursor-pointer select-none active:text-slate-600 transition">© 2026 XLVII
+                47. All rights reserved.</p>
+            <div class="flex gap-4">
+                <a href="/" class="hover:text-slate-600 transition">Showrooms</a>
+                <a href="about.html" class="hover:text-slate-600 transition">About</a>
+            </div>
+        </div>
+    </footer>
 </body>
+
 </html>

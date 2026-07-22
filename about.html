@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,33 +9,53 @@
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
     <style>
-        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
     </style>
 </head>
+
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col justify-between">
 
     <!-- NAVIGATION BAR -->
     <nav class="fixed w-full z-40 top-0 bg-white/80 backdrop-blur-md border-b border-slate-200">
-        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-            <a href="/" class="flex items-center transition hover:opacity-80">
-                <img src="logo.png" alt="Shot 47 Logo" class="h-8 w-auto object-contain">
-            </a>
-            <div class="flex items-center gap-6 text-sm font-medium">
-                <a href="/" class="text-slate-600 hover:text-blue-600 transition">Showrooms</a>
-                <a href="/about" class="text-blue-600 font-semibold">About</a>
+        <!-- 3-Column Grid Layout to center the navigation links perfectly -->
+        <div class="max-w-7xl mx-auto px-6 py-1 grid grid-cols-3 items-center">
+
+            <!-- Left Column: Logo -->
+            <div class="flex justify-start">
+                <a href="/" class="flex items-center transition hover:opacity-80">
+                    <img src="LOG.png" alt="47 XLVII Logo" class="h-28 w-auto object-contain" />
+                </a>
             </div>
+
+            <!-- Center Column: Nav Links -->
+            <div class="flex justify-center items-center gap-8 text-sm font-medium">
+                <a href="/" class="text-blue-600 font-semibold">Showrooms</a>
+                <a href="about.html" class="text-slate-600 hover:text-blue-600 transition">About</a>
+            </div>
+
+            <!-- Right Column: Empty spacer to balance the grid layout -->
+            <div></div>
+
         </div>
     </nav>
 
     <!-- HERO SECTION -->
     <section class="pt-32 pb-20 px-6">
         <div class="max-w-4xl mx-auto text-center">
-            <span class="text-xs font-bold tracking-widest text-blue-600 uppercase bg-blue-50 px-3 py-1 rounded-full">The Next Dimension of Retail</span>
-            <h1 class="text-4xl md:text-5xl font-bold text-slate-900 tracking-tight mt-4 mb-6 uppercase">Taking Your Products To The Consumer Better Visualization, More Conversions</h1>
+            <span
+                class="text-xs font-bold tracking-widest text-blue-600 uppercase bg-blue-50 px-3 py-1 rounded-full">The
+                Next Dimension of E-commerce</span>
+            <h1 class="text-4xl md:text-5xl font-bold text-slate-900 tracking-tight mt-4 mb-6 uppercase">Solve Real
+                Business Challenges, Better Customer Engagement AS A Bonus</h1>
             <p class="text-lg text-slate-600 leading-relaxed max-w-2xl mx-auto">
-                At XLVII 47, we specialize in high-fidelity 3D spatial capture, interactive web catalogs, and instant Augmented Reality deployment. We help brands turn physical inventory into immersive, web-ready digital assets.
+                At XLVII 47, we specialize in high-fidelity 3D spatial capture, interactive web catalogs, and instant
+                Augmented Reality deployment. We help brands take Site-locked physical inventory and place it right in
+                the customer's hands and home.
             </p>
         </div>
     </section>
@@ -43,34 +64,54 @@
     <section class="py-16 bg-white border-y border-slate-200 px-6">
         <div class="max-w-5xl mx-auto grid md:grid-cols-2 gap-12 items-center">
             <div>
-                <h2 class="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight mb-4 uppercase">Why 3D Visualization Matters</h2>
+                <h2 class="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight mb-4 uppercase">How we help to
+                    improve your bottom line</h2>
                 <p class="text-slate-600 leading-relaxed mb-4">
-                    Static images are limited in how they showcase products. They are not as adaptable in using modern scene creation and staging tools. Whether it’s architectural features, detailed industrial layouts, complex hospitality spaces, or retail assets like furniture and luxury carpets, spatial confidence drives choices.
+                    The Digital Age has brought us all closer together. Today, businessess are able to serve customers
+                    without them ever having come to their physical stores.
+                    This did introduce it's own issues however. It affected spatial confidence for customers and
+                    continues to cause all sorts of retail operations, logistics
+                    and finance issues for companies, especially with conversion rates, returns and exchanges.
                 </p>
                 <p class="text-slate-600 leading-relaxed">
-                    Our workflow bridges this gap cleanly. By embedding WebXR-enabled assets directly into your digital identity, your clients can project, scale, and customize products straight into their physical environments with a single click.
+                    Our workflow bridges this gap cleanly. By embedding WebXR-enabled assets directly into your digital
+                    identity, your clients can project, scale, and customize products and spaces straight into their
+                    physical
+                    environments with a single click. This isn't just about premium visuals—it's about cutting
+                    return-shipping costs and increasing your online conversion rates.
                 </p>
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div class="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                    <h3 class="font-bold text-2xl text-blue-600">100%</h3>
-                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-1">Web-Native AR</p>
-                    <p class="text-xs text-slate-500 mt-2">Zero clunky apps for end users to download.</p>
+                    <h3 class="font-bold text-2xl text-blue-600">Zero</h3>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-1">Friction Integration
+                    </p>
+                    <p class="text-xs text-slate-500 mt-2">Immediately accessible. No need of clunky apps for end users
+                        to
+                        download.</p>
                 </div>
                 <div class="p-6 bg-slate-50 rounded-2xl border border-slate-100">
                     <h3 class="font-bold text-2xl text-blue-600">High-Fi</h3>
-                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-1">Spatial Renders</p>
-                    <p class="text-xs text-slate-500 mt-2">Optimized for lighting, sizing, and texture accuracy.</p>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-1">Eliminate Customer
+                        Uncertainty</p>
+                    <p class="text-xs text-slate-500 mt-2">Accurate scaling and puts essential information at the fore,
+                        so customers don't miss it.
+                    </p>
                 </div>
                 <div class="p-6 bg-slate-50 rounded-2xl border border-slate-100">
                     <h3 class="font-bold text-2xl text-blue-600">Cross-Plat</h3>
-                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-1">GLB & USDZ</p>
-                    <p class="text-xs text-slate-500 mt-2">Flawless functionality across Android, iOS, and desktop ecosystems.</p>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-1">Universal
+                        E-Commerce/Site Integration</p>
+                    <p class="text-xs text-slate-500 mt-2">Fully compatible across all major platforms (Shopify,
+                        WooCommerce, custom builds) and devices (iOS, Android, desktop)
+                        ecosystems.</p>
                 </div>
                 <div class="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                    <h3 class="font-bold text-2xl text-blue-600">Zero</h3>
-                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-1">Hosting Friction</p>
-                    <p class="text-xs text-slate-500 mt-2">Clean, streamlined layouts optimized for lightning performance.</p>
+                    <h3 class="font-bold text-2xl text-blue-600">Enterprise</h3>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-1">Database Scaling</p>
+                    <p class="text-xs text-slate-500 mt-2">Powered by high-performance cloud pipelines to handle massive
+                        product catalogs with minimal bandwidth overhead, keeping your web-load speeds lightning-fast.
+                        performance.</p>
                 </div>
             </div>
         </div>
@@ -81,21 +122,26 @@
         <div class="bg-slate-900 rounded-3xl text-white p-8 md:p-12 shadow-xl relative overflow-hidden">
             <div class="relative z-10 grid md:grid-cols-2 gap-8 items-center">
                 <div>
-                    <h2 class="text-2xl md:text-3xl font-bold tracking-tight uppercase mb-2">Let's Build Something Immersive</h2>
+                    <h2 class="text-2xl md:text-3xl font-bold tracking-tight uppercase mb-2">Let's Build Something
+                        Immersive</h2>
                     <p class="text-slate-400 text-sm leading-relaxed">
-                        Ready to elevate your showroom or catalog with interactive 3D modeling and custom real-time configuration engines? Get in touch with us to discuss an integration plan.
+                        Ready to elevate your showroom or catalog with interactive 3D modeling and custom real-time
+                        configuration engines? Get in touch with us to discuss an integration plan.
                     </p>
                 </div>
-                
-                <div class="flex flex-col gap-4 text-sm border-t border-slate-800 md:border-t-0 md:border-l md:pt-0 md:pl-8 pt-6">
+
+                <div
+                    class="flex flex-col gap-4 text-sm border-t border-slate-800 md:border-t-0 md:border-l md:pt-0 md:pl-8 pt-6">
                     <!-- Contact Details Placeholders -->
                     <div class="flex items-center gap-3">
                         <span class="text-blue-400 font-bold w-5 text-center">✉</span>
-                        <a href="mailto:info@fortyseven.co.za" class="text-slate-200 hover:text-white transition">business@fortyseven.co.za</a>
+                        <a href="mailto:info@fortyseven.co.za"
+                            class="text-slate-200 hover:text-white transition">business@fortyseven.co.za</a>
                     </div>
                     <div class="flex items-center gap-3">
                         <span class="text-blue-400 font-bold w-5 text-center">✆</span>
-                        <a href="tel:+27123456789" class="text-slate-200 hover:text-white transition">+27 (0)71 889 9780</a>
+                        <a href="tel:+27123456789" class="text-slate-200 hover:text-white transition">+27 (0)71 889
+                            9780</a>
                     </div>
                     <div class="flex items-center gap-3">
                         <span class="text-blue-400 font-bold w-5 text-center">📍</span>
@@ -105,8 +151,10 @@
                     <!-- Social Media Links Placeholders -->
                     <div class="mt-4 pt-4 border-t border-slate-800 flex items-center gap-4">
                         <span class="text-xs font-bold text-slate-500 tracking-wider uppercase">Connect:</span>
-                        <a href="https://linkedin.com/company/placeholder" target="_blank" class="text-slate-400 hover:text-blue-400 transition font-medium">Coming Soon</a>
-                        <a href="https://instagram.com/placeholder" target="_blank" class="text-slate-400 hover:text-pink-400 transition font-medium">Coming Soon</a>
+                        <a href="https://linkedin.com/company/placeholder" target="_blank"
+                            class="text-slate-400 hover:text-blue-400 transition font-medium">Coming Soon</a>
+                        <a href="https://instagram.com/placeholder" target="_blank"
+                            class="text-slate-400 hover:text-pink-400 transition font-medium">Coming Soon</a>
                     </div>
                 </div>
             </div>
@@ -115,7 +163,8 @@
 
     <!-- FOOTER -->
     <footer class="w-full bg-white border-t border-slate-200 py-6 px-6">
-        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 font-medium">
+        <div
+            class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 font-medium">
             <p>© 2026 XLVII 47. All rights reserved.</p>
             <div class="flex gap-4">
                 <a href="/" class="hover:text-slate-600 transition">Showrooms</a>
@@ -125,4 +174,5 @@
     </footer>
 
 </body>
+
 </html>
