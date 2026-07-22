@@ -30,27 +30,46 @@
 <body class="antialiased pb-20">
 
     <nav class="fixed w-full z-40 top-0 bg-white/80 backdrop-blur-md border-b border-slate-200">
-        <!-- 3-Column Grid Layout to center the navigation links -->
-        <div class="max-w-7xl mx-auto px-6 py-1 grid grid-cols-3 items-center">
+        <!-- Responsive Container (Flex on mobile, 3-column Grid on desktop) -->
+        <div class="max-w-7xl mx-auto px-6 py-1 flex items-center justify-between md:grid md:grid-cols-3">
 
             <!-- Left Column: Logo -->
-            <div class="flex justify-start">
+            <div class="flex justify-start items-center">
                 <a href="index.html" class="flex items-center transition hover:opacity-80">
-                    <img src="LOG.png" alt="47 XLVII Logo" class="h-28 w-auto object-contain">
+                    <img src="LOG.png" alt="47 XLVII Logo" class="h-20 md:h-28 w-auto object-contain">
                 </a>
             </div>
 
-            <!-- Center Column: Nav Links -->
-            <div class="flex justify-center items-center gap-8 text-sm font-medium">
+            <!-- Center Column: Nav Links (Desktop Only) -->
+            <div class="hidden md:flex justify-center items-center gap-8 text-sm font-medium">
                 <a href="/" class="text-blue-600 font-semibold">Showrooms</a>
                 <a href="about.html" class="text-slate-600 hover:text-blue-600 transition">About</a>
             </div>
 
-            <!-- Right Column: Hub Label -->
-            <div class="flex justify-end items-center">
+            <!-- Right Column: Hub Label (Desktop Only) -->
+            <div class="hidden md:flex justify-end items-center">
                 <span class="text-sm font-semibold text-slate-500">Category Hub</span>
             </div>
 
+            <!-- Mobile Hamburger Button (Mobile Only) -->
+            <div class="flex md:hidden items-center">
+                <button onclick="toggleMobileMenu()" class="p-2 text-slate-700 hover:text-blue-600 focus:outline-none">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
+            </div>
+
+        </div>
+
+        <!-- Mobile Dropdown Menu Panel -->
+        <div id="mobile-menu"
+            class="hidden md:hidden flex-col bg-white border-t border-slate-100 px-6 py-4 space-y-4 shadow-lg">
+            <a href="/" class="text-sm font-semibold text-blue-600">Showrooms</a>
+            <a href="about.html" class="text-sm font-medium text-slate-600 hover:text-blue-600 transition">About</a>
+            <div class="pt-2 border-t border-slate-100">
+                <span class="text-xs font-semibold text-slate-500">Category Hub</span>
+            </div>
         </div>
     </nav>
 
@@ -120,6 +139,15 @@
             </a>
         </div>
     </section>
+    <script>
+        window.toggleMobileMenu = function () {
+            const menu = document.getElementById('mobile-menu');
+            if (menu) {
+                menu.classList.toggle('hidden');
+                menu.classList.toggle('flex');
+            }
+        };
+    </script>
     <footer class="w-full bg-white border-t border-slate-200 py-6 px-6">
         <div
             class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 font-medium">
