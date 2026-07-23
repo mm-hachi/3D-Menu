@@ -21,17 +21,52 @@
 
     <!-- Custom AR Overlay -->
     <div id="ar-overlay">
+        <!-- Top HUD Bar -->
         <div id="hud-top">
+            <div class="hud-group left-group">
+                <a href="furniture.html" id="exit-ar-btn" class="glass-btn icon-text-btn" title="Exit AR App">
+                    <span class="btn-icon">←</span> Exit
+                </a>
+                <button id="hamburger-btn" class="glass-btn icon-text-btn" title="Toggle Spatial Catalog">
+                    <span class="btn-icon">☰</span> Menu
+                </button>
+            </div>
+
             <div id="budget-badge">
-                <span class="budget-label">Total</span>
+                <span class="budget-label">Total Tally</span>
                 <span id="budget-value">$0.00</span>
             </div>
-            <button id="clear-btn" class="glass-icon-btn" title="Clear Scene">🗑️</button>
+
+            <div class="hud-group right-group">
+                <button id="clear-btn" class="glass-icon-btn" title="Clear All Models">🗑️</button>
+            </div>
         </div>
 
-        <div id="placement-hint">Tap on a surface to place model</div>
+        <!-- Placement Guidance Readout -->
+        <div id="placement-hint">Aim at a surface and tap 'Place Model'</div>
 
-        <div id="catalog-drawer">
+        <!-- Dynamic Action Toolbar (Floating Center/Bottom) -->
+        <div id="action-bar">
+            <!-- Dynamic Place Button: Appears when catalog model selected -->
+            <button id="place-btn" class="btn-action btn-place" style="display: none;">
+                ➕ Place Model
+            </button>
+
+            <!-- Dynamic Delete Button: Appears when placed 3D model selected -->
+            <button id="delete-selected-btn" class="btn-action btn-delete" style="display: none;">
+                🗑️ Delete Selected
+            </button>
+        </div>
+
+        <!-- Toggleable Catalog Drawer (Hamburger Menu) -->
+        <div id="catalog-drawer" class="collapsed">
+            <div class="drawer-header">
+                <div class="drawer-title-group">
+                    <span class="drawer-title">Spatial Catalog</span>
+                    <span class="drawer-subtitle">Select an asset to stage</span>
+                </div>
+                <button id="close-drawer-btn" class="icon-close-btn" title="Close Catalog">✕</button>
+            </div>
             <div id="category-tabs">
                 <button class="tab-btn active" data-category="furniture">Furniture</button>
                 <button class="tab-btn" data-category="carpets">Carpets</button>

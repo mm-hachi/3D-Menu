@@ -7,8 +7,21 @@
     <meta name="color-scheme" content="light only">
     <link rel="icon" type="image/png" href="favicon.png">
     <title>47 XLVII | Furniture Showroom</title>
+
+    <!-- [OPTIMIZATION NOTE 1]: Added preconnect for Google Fonts to reduce DNS lookup, TCP, and TLS connection times, which makes the text render faster. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+    <!-- [OPTIMIZATION NOTE 2]: Added modulepreload for Firebase dependencies to fetch them concurrently with the HTML parsing, significantly speeding up Firebase initialization. -->
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js">
+
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+
+    <!-- [OPTIMIZATION NOTE 3]: The Tailwind CDN script compiles CSS on the client-side which adds to load time. For true production speed, compile this to a static CSS file. -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -112,7 +125,7 @@
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
         }
 
-        @uses (padding-top: env(safe-area-inset-top)) {
+        @supports (padding-top: env(safe-area-inset-top)) {
             .close-viewer-btn {
                 top: calc(env(safe-area-inset-top) + 45px);
             }
@@ -519,6 +532,16 @@
                 viewer.id = 'main-viewer';
                 viewer.className = 'w-full h-full';
                 viewer.setAttribute('loading', 'eager');
+
+                // [OPTIMIZATION NOTE 4]: 'reveal="auto"' ensures the model displays immediately when it is loaded without extra delay.
+                viewer.setAttribute('reveal', 'auto');
+
+                // [OPTIMIZATION NOTE 5]: 'power-preference="high-performance"' requests the dedicated GPU for smoother framerates during 3D and AR, speeding up AR tracking.
+                viewer.setAttribute('power-preference', 'high-performance');
+
+                // [OPTIMIZATION NOTE 6]: Disabling interaction-prompt removes the unnecessary hand animation rendering, improving performance slightly and providing a cleaner UI.
+                viewer.setAttribute('interaction-prompt', 'none');
+
                 viewer.setAttribute('ar', '');
                 viewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
                 viewer.setAttribute('ar-placement', 'floor');
@@ -532,8 +555,6 @@
                 viewer.setAttribute('disable-zoom', ''); // Stops zoom in/out
                 viewer.setAttribute('disable-pan', '');  // Stops dragging/translating the model away
                 viewer.setAttribute('disable-tap', '');  // Stops model from shifting position on click/tap
-
-
 
                 const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
                 svg.id = "dimension-svg";
@@ -663,9 +684,9 @@
             }, { once: true });
 
             try {
-                const glbRef = ref(storage, `models/glb/${model.glb}`);
-                const usdzRef = ref(storage, `models/usdz/${model.usdz}`);
-                const [glbUrl, usdzUrl] = await Promise.all([getDownloadURL(glbRef), getDownloadURL(usdzRef)]);
+                // [OPTIMIZATION NOTE 7]: Use pre-fetched URLs if available to avoid the latency of 'getDownloadURL' during the click event.
+                const glbUrl = model.glbUrl || await getDownloadURL(ref(storage, `models/glb/${model.glb}`));
+                const usdzUrl = model.usdzUrl || await getDownloadURL(ref(storage, `models/usdz/${model.usdz}`));
 
                 viewer.src = glbUrl;
                 viewer.iosSrc = usdzUrl + "#allowsContentScaling=0&occlusion=1";
@@ -847,15 +868,39 @@
             } catch (e) { console.error(e); }
         }
 
+        // [OPTIMIZATION NOTE 8]: New function to securely pre-fetch models and bypass Firebase Storage getDownloadURL latency at click-time.
+        window.prefetchModel = function (index) {
+            const model = modelsData[index];
+            if (model.prefetched) return;
+            model.prefetched = true;
+
+            if (model.glb) {
+                const glbRef = ref(storage, `models/glb/${model.glb}`);
+                getDownloadURL(glbRef).then(url => {
+                    model.glbUrl = url;
+                    fetch(url, { mode: 'cors', cache: 'force-cache' });
+                }).catch(e => console.error(e));
+            }
+            if (model.usdz) {
+                const usdzRef = ref(storage, `models/usdz/${model.usdz}`);
+                getDownloadURL(usdzRef).then(url => {
+                    model.usdzUrl = url;
+                }).catch(e => console.error(e));
+            }
+        };
+
         function renderGrid() {
             const grid = document.getElementById('model-grid');
             grid.innerHTML = '';
             modelsData.forEach((model, index) => {
                 const imgId = `card-img-${index}`;
+                // [OPTIMIZATION NOTE 9]: Added 'onmouseenter' and 'ontouchstart' to prefetch the 3D models the moment the user hovers or taps the card, drastically cutting the load time when they click to open it.
                 const cardHTML = `
-                <div class="group bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition duration-300">
+                <div class="group bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition duration-300"
+                    onmouseenter="prefetchModel(${index})" ontouchstart="prefetchModel(${index})">
                     <div class="w-full aspect-[4/3] bg-slate-50 overflow-hidden relative border-b border-slate-100 cursor-pointer" onclick="openViewer(${index})">
-                        <img id="${imgId}" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100%' height='100%' fill='%23f1f5f9'/></svg>" class="w-full h-full object-cover group-hover:scale-105 transition duration-500 opacity-0" alt="${model.title}">
+                        <!-- [OPTIMIZATION NOTE 10]: Added 'loading="lazy"' and 'decoding="async"' to images so they don't block the initial page render. -->
+                        <img id="${imgId}" loading="lazy" decoding="async" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100%' height='100%' fill='%23f1f5f9'/></svg>" class="w-full h-full object-cover group-hover:scale-105 transition duration-500 opacity-0" alt="${model.title}">
                     </div>
                     <div class="p-4 flex-1 flex flex-col justify-between">
                         <div class="cursor-pointer" onclick="openViewer(${index})">

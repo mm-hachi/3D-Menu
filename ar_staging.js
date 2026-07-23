@@ -2,10 +2,6 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-// XR8.Threejs.pipelineModule() looks for a global window.THREE at call time.
-// ES module imports don't populate globals, so we bridge it explicitly here.
-window.THREE = THREE;
-
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
 import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js';
@@ -16,38 +12,151 @@ import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebas
 
 let scene, camera, renderer;
 let reticle;
-const spawnedModels = [];
-let selectedModelData = null; // { glbUrl, price }
+let selectionBoxHelper;
+
+const spawnedModels = []; // [{ mesh, price, glbUrl }]
+let selectedModelData = null; // Catalog asset data: { glbUrl, price }
+let selectedPlacedEntry = null; // Placed 3D object: { mesh, price, glbUrl }
+
+// Enable Three.js network cache
+THREE.Cache.enabled = true;
 
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+dracoLoader.preload();
+
 const gltfLoader = new GLTFLoader();
 gltfLoader.setDRACOLoader(dracoLoader);
+
 const modelCache = {};
 
-// Reticle
+// Background preload queue for instant placement
+const PRELOAD_CONCURRENCY = 2;
+let activePreloads = 0;
+const preloadQueue = [];
+
+function preloadModel(glbUrl, { priority = false } = {}) {
+    if (!glbUrl || modelCache[glbUrl]) return modelCache[glbUrl];
+
+    const promise = new Promise((resolve, reject) => {
+        const job = () => {
+            activePreloads++;
+            gltfLoader.load(
+                glbUrl,
+                (gltf) => {
+                    activePreloads--;
+                    resolve(gltf.scene);
+                    pumpPreloadQueue();
+                },
+                undefined,
+                (err) => {
+                    activePreloads--;
+                    console.error('[preloadModel] Load error:', err);
+                    delete modelCache[glbUrl];
+                    reject(err);
+                    pumpPreloadQueue();
+                }
+            );
+        };
+
+        if (priority) {
+            preloadQueue.unshift(job);
+        } else {
+            preloadQueue.push(job);
+        }
+    });
+
+    modelCache[glbUrl] = promise;
+    pumpPreloadQueue();
+    return promise;
+}
+
+function pumpPreloadQueue() {
+    while (activePreloads < PRELOAD_CONCURRENCY && preloadQueue.length > 0) {
+        const job = preloadQueue.shift();
+        job();
+    }
+}
+
+// Reticle Setup
 const reticleGeo = new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2);
 const reticleMat = new THREE.MeshBasicMaterial({ color: 0x34c759 });
 
+// Raycasting for Model Selection
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. 8TH WALL PIPELINE LOGIC (SLAM ENGINE)
+// 2. PLACED MODEL SELECTION & HIGHLIGHTING
+// ─────────────────────────────────────────────────────────────────────────────
+
+function selectPlacedModel(entry) {
+    selectedPlacedEntry = entry;
+    const deleteBtn = document.getElementById('delete-selected-btn');
+
+    if (entry) {
+        selectionBoxHelper.setFromObject(entry.mesh);
+        selectionBoxHelper.visible = true;
+        deleteBtn.style.display = 'inline-flex';
+    } else {
+        selectionBoxHelper.visible = false;
+        deleteBtn.style.display = 'none';
+    }
+}
+
+function handleCanvasTap(clientX, clientY) {
+    if (!camera || !scene) return;
+
+    pointer.x = (clientX / window.innerWidth) * 2 - 1;
+    pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(pointer, camera);
+
+    const targetMeshes = spawnedModels.map(item => item.mesh);
+    const intersects = raycaster.intersectObjects(targetMeshes, true);
+
+    if (intersects.length > 0) {
+        let topObj = intersects[0].object;
+        while (topObj.parent && topObj.parent !== scene) {
+            topObj = topObj.parent;
+        }
+
+        const matchedEntry = spawnedModels.find(e => e.mesh === topObj);
+        if (matchedEntry) {
+            selectPlacedModel(matchedEntry);
+            return;
+        }
+    }
+
+    // Tapped open space -> deselect placed model
+    selectPlacedModel(null);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. 8TH WALL PIPELINE LOGIC (SLAM ENGINE)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const arStagingPipelineModule = () => {
+    let touchStartX = 0;
+    let touchStartY = 0;
+
     return {
         name: 'ar-staging-logic',
         onStart: ({ canvas }) => {
-            // 8th Wall automatically sets up a Three.js scene overlaying the camera feed.
-            // We just grab the references to it here.
             const { scene: xrScene, camera: xrCamera, renderer: xrRenderer } = XR8.Threejs.xrScene();
             scene = xrScene;
             camera = xrCamera;
             renderer = xrRenderer;
 
-            // Enhance lighting for AR
+            if (renderer && renderer.setPixelRatio) {
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            }
+
+            // Scene Lighting
             const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.5);
             light.position.set(0.5, 1, 0.25);
             scene.add(light);
+
             const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
             dirLight.position.set(1, 4, 2);
             scene.add(dirLight);
@@ -58,26 +167,46 @@ const arStagingPipelineModule = () => {
             reticle.visible = false;
             scene.add(reticle);
 
-            // Tap-to-place event
-            // Note: The UI has 'pointer-events: auto', so touches on the UI won't trigger this canvas event!
+            // Add selection box helper for highlighting 3D models
+            selectionBoxHelper = new THREE.BoxHelper(new THREE.Mesh(), 0x007aff);
+            selectionBoxHelper.visible = false;
+            scene.add(selectionBoxHelper);
+
+            // Pointer/Touch Listeners for selection & tap-to-place
             canvas.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 1 && reticle.visible && selectedModelData) {
-                    spawnModelAtReticle(selectedModelData);
+                if (e.touches.length === 1) {
+                    touchStartX = e.touches[0].clientX;
+                    touchStartY = e.touches[0].clientY;
                 }
+            }, { passive: true });
+
+            canvas.addEventListener('touchend', (e) => {
+                if (e.changedTouches.length === 1) {
+                    const endX = e.changedTouches[0].clientX;
+                    const endY = e.changedTouches[0].clientY;
+
+                    // Only count as a tap if touch didn't drag significantly
+                    if (Math.hypot(endX - touchStartX, endY - touchStartY) < 10) {
+                        handleCanvasTap(endX, endY);
+                    }
+                }
+            });
+
+            canvas.addEventListener('click', (e) => {
+                // Desktop / Mouse fallback
+                handleCanvasTap(e.clientX, e.clientY);
             });
         },
         onUpdate: () => {
             if (!scene) return;
 
-            // Perform a hit test straight out from the center of the screen
-            // '0.5, 0.5' represents the center of the viewport in normalized coordinates.
+            // Perform hit test straight out from viewport center (0.5, 0.5)
             const hitTestResults = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
 
             if (hitTestResults && hitTestResults.length > 0) {
                 const hit = hitTestResults[0];
                 reticle.visible = true;
 
-                // 8th Wall provides position and rotation natively.
                 const p = hit.position;
                 const r = hit.rotation;
                 const quaternion = new THREE.Quaternion(r.x, r.y, r.z, r.w);
@@ -90,28 +219,30 @@ const arStagingPipelineModule = () => {
             } else {
                 reticle.visible = false;
             }
+
+            // Keep selection bounding box aligned with selected object
+            if (selectedPlacedEntry && selectionBoxHelper.visible) {
+                selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
+            }
         }
     };
 };
 
 const onxrloaded = () => {
-    // Register the 8th Wall modules.
     XR8.addCameraPipelineModules([
-        XR8.GlTextureRenderer.pipelineModule(),       // Draws camera feed
-        XR8.Threejs.pipelineModule(),                 // Syncs camera with Three.js
-        XR8.XrController.pipelineModule(),            // Core SLAM tracking
+        XR8.GlTextureRenderer.pipelineModule(),       // Camera feed renderer
+        XR8.Threejs.pipelineModule(),                 // Three.js sync
+        XR8.XrController.pipelineModule(),            // SLAM tracking engine
         window.XRExtras.AlmostThere.pipelineModule(), // Loading UI
         window.XRExtras.FullWindowCanvas.pipelineModule(),
         window.XRExtras.Loading.pipelineModule(),
         window.XRExtras.RuntimeError.pipelineModule(),
-        arStagingPipelineModule(),                    // Our custom App Logic
+        arStagingPipelineModule(),                    // App Logic
     ]);
 
-    // Launch!
     XR8.run({ canvas: document.getElementById('camera-canvas') });
 };
 
-// Wait for 8th Wall scripts to load
 if (window.XR8) {
     onxrloaded();
 } else {
@@ -119,7 +250,7 @@ if (window.XR8) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. UI & PLACEMENT LOGIC
+// 4. UI CONTROLS & DYNAMIC BUTTON HANDLERS
 // ─────────────────────────────────────────────────────────────────────────────
 
 function updateBudget() {
@@ -127,49 +258,96 @@ function updateBudget() {
     document.getElementById('budget-value').textContent = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Hamburger Drawer Toggle
+const catalogDrawer = document.getElementById('catalog-drawer');
+const hamburgerBtn = document.getElementById('hamburger-btn');
+const closeDrawerBtn = document.getElementById('close-drawer-btn');
+
+function toggleDrawer(open) {
+    if (open === undefined) {
+        catalogDrawer.classList.toggle('collapsed');
+    } else if (open) {
+        catalogDrawer.classList.remove('collapsed');
+    } else {
+        catalogDrawer.classList.add('collapsed');
+    }
+}
+
+hamburgerBtn.addEventListener('click', () => toggleDrawer());
+closeDrawerBtn.addEventListener('click', () => toggleDrawer(false));
+
+// Clear All Models
 document.getElementById('clear-btn').addEventListener('click', () => {
+    selectPlacedModel(null);
     spawnedModels.forEach(entry => scene.remove(entry.mesh));
     spawnedModels.length = 0;
     updateBudget();
 });
 
+// Dynamic Delete Button Action
+document.getElementById('delete-selected-btn').addEventListener('click', () => {
+    if (!selectedPlacedEntry) return;
+
+    const entryToDelete = selectedPlacedEntry;
+    selectPlacedModel(null);
+
+    scene.remove(entryToDelete.mesh);
+    entryToDelete.mesh.traverse((node) => {
+        if (node.isMesh) {
+            node.geometry?.dispose();
+            const mats = Array.isArray(node.material) ? node.material : [node.material];
+            mats.forEach(m => m?.dispose());
+        }
+    });
+
+    const idx = spawnedModels.indexOf(entryToDelete);
+    if (idx !== -1) {
+        spawnedModels.splice(idx, 1);
+    }
+    updateBudget();
+});
+
+// Dynamic Place Button Action
+const placeBtn = document.getElementById('place-btn');
+placeBtn.addEventListener('click', () => {
+    if (reticle.visible && selectedModelData) {
+        spawnModelAtReticle(selectedModelData);
+    }
+});
+
 function spawnModelAtReticle(modelData) {
     const glbUrl = modelData.glbUrl;
 
-    // Visual feedback
+    // Visual reticle flash feedback
     reticleMat.color.setHex(0xffffff);
     setTimeout(() => reticleMat.color.setHex(0x34c759), 200);
 
-    if (modelCache[glbUrl]) {
-        addMeshToScene(modelCache[glbUrl].clone(), modelData);
-    } else {
-        gltfLoader.load(
-            glbUrl,
-            (gltf) => {
-                const mesh = gltf.scene;
-                modelCache[glbUrl] = mesh;
-                addMeshToScene(mesh.clone(), modelData);
-            },
-            undefined,
-            (err) => console.error('[spawnModel] Load error:', err)
-        );
-    }
+    const placementMatrix = reticle.matrix.clone();
+    const templatePromise = modelCache[glbUrl] || preloadModel(glbUrl, { priority: true });
+
+    templatePromise
+        .then((template) => addMeshToScene(template.clone(), modelData, placementMatrix))
+        .catch((err) => console.error('[spawnModel] Load error:', err));
 }
 
-function addMeshToScene(mesh, modelData) {
-    mesh.position.setFromMatrixPosition(reticle.matrix);
+function addMeshToScene(mesh, modelData, placementMatrix) {
+    const matrix = placementMatrix || reticle.matrix;
+    mesh.position.setFromMatrixPosition(matrix);
 
-    // Extract Y rotation to keep the model upright, facing relative to camera
-    const euler = new THREE.Euler().setFromRotationMatrix(reticle.matrix, 'YXZ');
+    const euler = new THREE.Euler().setFromRotationMatrix(matrix, 'YXZ');
     mesh.rotation.y = euler.y;
 
     scene.add(mesh);
-    spawnedModels.push({ mesh, price: modelData.price });
+    const entry = { mesh, price: modelData.price, glbUrl: modelData.glbUrl };
+    spawnedModels.push(entry);
+
+    // Automatically select newly placed model
+    selectPlacedModel(entry);
     updateBudget();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. FIREBASE CATALOG
+// 5. FIREBASE CATALOG INTEGRATION
 // ─────────────────────────────────────────────────────────────────────────────
 
 const firebaseConfig = {
@@ -200,10 +378,13 @@ async function resolveUrl(pathOrUrl, folder) {
     return getDownloadURL(ref(storage, `${folder}/${pathOrUrl}`));
 }
 
-function selectModel(card, assetData) {
+function selectCatalogModel(card, assetData) {
     document.querySelectorAll('.catalog-item').forEach(el => el.classList.remove('selected'));
     card.classList.add('selected');
     selectedModelData = assetData;
+
+    // Show place button & placement guidance hint
+    placeBtn.style.display = 'inline-flex';
     document.getElementById('placement-hint').classList.add('show-hint');
 }
 
@@ -237,11 +418,17 @@ function renderCatalog(category) {
             .then((glbUrl) => {
                 card.classList.remove('state-loading');
                 const assetData = { glbUrl, price: asset.price };
+                const isFirstCard = list.children[0] === card;
 
-                card.addEventListener('click', () => selectModel(card, assetData));
+                preloadModel(glbUrl, { priority: isFirstCard });
 
-                if (!selectedModelData && list.children[0] === card) {
-                    selectModel(card, assetData);
+                card.addEventListener('click', () => {
+                    selectCatalogModel(card, assetData);
+                    preloadModel(glbUrl, { priority: true });
+                });
+
+                if (!selectedModelData && isFirstCard) {
+                    selectCatalogModel(card, assetData);
                 }
             })
             .catch(() => {
