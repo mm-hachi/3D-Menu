@@ -2,9 +2,6 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-// 8th Wall's XR8.Threejs.pipelineModule() looks for window.THREE.
-// ES module imports are scoped and don't auto-expose globals, so we
-// must attach it manually before the XR8 pipeline is initialized.
 window.THREE = THREE;
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
@@ -35,7 +32,6 @@ gltfLoader.setDRACOLoader(dracoLoader);
 
 const modelCache = {};
 
-// Background preload queue for instant placement
 const PRELOAD_CONCURRENCY = 2;
 let activePreloads = 0;
 const preloadQueue = [];
@@ -83,23 +79,13 @@ function pumpPreloadQueue() {
     }
 }
 
-// CSS Reticle — positioned in DOM, always pixel-perfect at screen center
 const cssReticle = document.getElementById('reticle');
 const hintEl = document.getElementById('placement-hint');
 const placeBtn = document.getElementById('place-btn');
-let hasHitSurface = false; // tracks whether a surface has EVER been found (controls dim-vs-hidden)
+let hasHitSurface = false;
 
-// Surface-scan gating (inspired by ARKit/Quick Look, tuned to be forgiving):
-// an ESTIMATED_SURFACE_PLANE hit is a confirmed, classified surface and locks
-// instantly. A raw FEATURE_POINT hit is a noisier single-point depth guess —
-// rather than rejecting it outright (which meant the app could hang forever
-// "scanning" in dim light or on low-texture surfaces where plane classification
-// rarely completes), it's accepted once it's been consistently present for a
-// short settle window. `hitStreak` decays gradually on a miss rather than
-// resetting to zero, so brief flicker between plane/feature/no-hit doesn't
-// restart the settle countdown from scratch.
 const MISS_TOLERANCE_FRAMES = 6;
-const FEATURE_POINT_SETTLE_FRAMES = 10; // ~0.3–0.4s of consistent tracking at 24–30fps
+const FEATURE_POINT_SETTLE_FRAMES = 10;
 let missStreak = 0;
 let hitStreak = 0;
 let surfaceLocked = false;
@@ -107,12 +93,11 @@ const SCANNING_HINT = 'Move your device slowly to scan for a surface…';
 const DETECTING_HINT = 'Hold steady, locking onto surface…';
 const READY_HINT = "Aim at a surface and tap 'Place Model'";
 
-// Raycasting for Model Selection
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. PLACED MODEL SELECTION & HIGHLIGHTING
+// 2. PLACED MODEL SELECTION & MANIPULATION
 // ─────────────────────────────────────────────────────────────────────────────
 
 function selectPlacedModel(entry) {
@@ -120,6 +105,11 @@ function selectPlacedModel(entry) {
     const deleteBtn = document.getElementById('delete-selected-btn');
 
     if (entry) {
+        // Enforce true 1:1 scale and lock Z rotation on selection
+        entry.mesh.scale.set(1, 1, 1);
+        entry.mesh.rotation.z = 0;
+        entry.mesh.rotation.x = 0;
+
         selectionBoxHelper.setFromObject(entry.mesh);
         selectionBoxHelper.visible = true;
         deleteBtn.style.display = 'inline-flex';
@@ -153,17 +143,18 @@ function handleCanvasTap(clientX, clientY) {
         }
     }
 
-    // Tapped open space -> deselect placed model
     selectPlacedModel(null);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. 8TH WALL PIPELINE LOGIC (SLAM ENGINE)
+// 3. 8TH WALL PIPELINE LOGIC
 // ─────────────────────────────────────────────────────────────────────────────
 
 const arStagingPipelineModule = () => {
     let touchStartX = 0;
     let touchStartY = 0;
+    let isTouching = false;
+    let previousTwoTouchAngle = null;
 
     return {
         name: 'ar-staging-logic',
@@ -177,7 +168,6 @@ const arStagingPipelineModule = () => {
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
             }
 
-            // Scene Lighting
             const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.5);
             light.position.set(0.5, 1, 0.25);
             scene.add(light);
@@ -186,21 +176,62 @@ const arStagingPipelineModule = () => {
             dirLight.position.set(1, 4, 2);
             scene.add(dirLight);
 
-            // We use a CSS reticle (always screen-center) instead of a 3D mesh.
-            // A hidden THREE.Object3D acts as the placement anchor for hit test results.
             reticle = new THREE.Object3D();
             scene.add(reticle);
 
-            // Add selection box helper for highlighting 3D models
             selectionBoxHelper = new THREE.BoxHelper(new THREE.Mesh(), 0x007aff);
             selectionBoxHelper.visible = false;
             scene.add(selectionBoxHelper);
 
-            // Pointer/Touch Listeners for selection & tap-to-place
+            // Pointer & Touch Listeners for Move, Rotate, and Selection
             canvas.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 1) {
                     touchStartX = e.touches[0].clientX;
                     touchStartY = e.touches[0].clientY;
+                    isTouching = true;
+                } else if (e.touches.length === 2 && selectedPlacedEntry) {
+                    const dx = e.touches[1].clientX - e.touches[0].clientX;
+                    const dy = e.touches[1].clientY - e.touches[0].clientY;
+                    previousTwoTouchAngle = Math.atan2(dy, dx);
+                }
+            }, { passive: true });
+
+            canvas.addEventListener('touchmove', (e) => {
+                if (!selectedPlacedEntry) return;
+
+                if (e.touches.length === 1 && isTouching) {
+                    // 1-Finger Touch Drag: Move selected model directly along scanned surface
+                    const currentX = e.touches[0].clientX;
+                    const currentY = e.touches[0].clientY;
+
+                    const normX = currentX / window.innerWidth;
+                    const normY = currentY / window.innerHeight;
+                    const hitResults = XR8.XrController.hitTest(normX, normY, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
+                    const hit = hitResults?.find(h => h.type === 'ESTIMATED_SURFACE_PLANE') || hitResults?.find(h => h.type === 'FEATURE_POINT');
+
+                    if (hit) {
+                        selectedPlacedEntry.mesh.position.set(hit.position.x, hit.position.y, hit.position.z);
+                    } else if (reticle) {
+                        selectedPlacedEntry.mesh.position.copy(reticle.position);
+                    }
+
+                    // Enforce scale & Z-rotation lock
+                    selectedPlacedEntry.mesh.scale.set(1, 1, 1);
+                    selectedPlacedEntry.mesh.rotation.z = 0;
+                    selectedPlacedEntry.mesh.rotation.x = 0;
+                } else if (e.touches.length === 2) {
+                    // 2-Finger Touch Twist: Rotate model around Y-axis (lock Z-axis)
+                    const dx = e.touches[1].clientX - e.touches[0].clientX;
+                    const dy = e.touches[1].clientY - e.touches[0].clientY;
+                    const currentAngle = Math.atan2(dy, dx);
+
+                    if (previousTwoTouchAngle !== null) {
+                        const deltaAngle = currentAngle - previousTwoTouchAngle;
+                        selectedPlacedEntry.mesh.rotation.y += deltaAngle;
+                        selectedPlacedEntry.mesh.rotation.z = 0;
+                        selectedPlacedEntry.mesh.rotation.x = 0;
+                    }
+                    previousTwoTouchAngle = currentAngle;
                 }
             }, { passive: true });
 
@@ -208,16 +239,27 @@ const arStagingPipelineModule = () => {
                 if (e.changedTouches.length === 1) {
                     const endX = e.changedTouches[0].clientX;
                     const endY = e.changedTouches[0].clientY;
+                    isTouching = false;
 
-                    // Only count as a tap if touch didn't drag significantly
                     if (Math.hypot(endX - touchStartX, endY - touchStartY) < 10) {
                         handleCanvasTap(endX, endY);
                     }
                 }
+                if (e.touches.length < 2) {
+                    previousTwoTouchAngle = null;
+                }
             });
 
+            // Desktop Mouse Wheel Fallback for Rotation
+            canvas.addEventListener('wheel', (e) => {
+                if (selectedPlacedEntry) {
+                    selectedPlacedEntry.mesh.rotation.y += e.deltaY * 0.005;
+                    selectedPlacedEntry.mesh.rotation.z = 0;
+                    selectedPlacedEntry.mesh.rotation.x = 0;
+                }
+            }, { passive: true });
+
             canvas.addEventListener('click', (e) => {
-                // Desktop / Mouse fallback
                 handleCanvasTap(e.clientX, e.clientY);
             });
 
@@ -226,21 +268,15 @@ const arStagingPipelineModule = () => {
         onUpdate: () => {
             if (!scene) return;
 
-            // Perform hit test straight out from viewport center (0.5, 0.5)
             const hitTestResults = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
-
             const planeHit = hitTestResults?.find((hit) => hit.type === 'ESTIMATED_SURFACE_PLANE');
             const featureHit = hitTestResults?.find((hit) => hit.type === 'FEATURE_POINT');
             const hit = planeHit || featureHit;
 
             if (hit) {
                 missStreak = 0;
-
-                // A classified plane is trusted immediately. A feature point
-                // still has to earn trust by building up its settle streak.
                 hitStreak = planeHit ? FEATURE_POINT_SETTLE_FRAMES : Math.min(hitStreak + 1, FEATURE_POINT_SETTLE_FRAMES);
 
-                // Update invisible anchor so placement uses the live world position
                 const p = hit.position;
                 const r = hit.rotation;
                 reticle.position.set(p.x, p.y, p.z);
@@ -262,16 +298,9 @@ const arStagingPipelineModule = () => {
                 }
             } else {
                 missStreak += 1;
-                // Decay gradually rather than resetting to zero instantly, so
-                // brief flicker between plane/feature/no-hit doesn't force the
-                // settle countdown to restart from scratch.
                 hitStreak = Math.max(0, hitStreak - 1);
 
-                // Tolerate a handful of dropped frames before treating the
-                // surface as lost, so brief tracking hiccups don't flicker
-                // the reticle or the Place button in and out.
                 if (missStreak > MISS_TOLERANCE_FRAMES) {
-                    // Dim but keep visible so it doesn't flash in/out constantly
                     cssReticle.style.opacity = hasHitSurface ? '0.35' : '0';
 
                     if (surfaceLocked) {
@@ -281,9 +310,15 @@ const arStagingPipelineModule = () => {
                 }
             }
 
-            // Keep selection bounding box aligned with selected object
-            if (selectedPlacedEntry && selectionBoxHelper.visible) {
-                selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
+            // Keep selected model strictly locked at 1:1 scale, locked Z rotation, and aligned selection box
+            if (selectedPlacedEntry) {
+                selectedPlacedEntry.mesh.scale.set(1, 1, 1);
+                selectedPlacedEntry.mesh.rotation.z = 0;
+                selectedPlacedEntry.mesh.rotation.x = 0;
+
+                if (selectionBoxHelper.visible) {
+                    selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
+                }
             }
         }
     };
@@ -291,14 +326,14 @@ const arStagingPipelineModule = () => {
 
 const onxrloaded = () => {
     XR8.addCameraPipelineModules([
-        XR8.GlTextureRenderer.pipelineModule(),       // Camera feed renderer
-        XR8.Threejs.pipelineModule(),                 // Three.js sync
-        XR8.XrController.pipelineModule(),            // SLAM tracking engine
-        window.XRExtras.AlmostThere.pipelineModule(), // Loading UI
+        XR8.GlTextureRenderer.pipelineModule(),
+        XR8.Threejs.pipelineModule(),
+        XR8.XrController.pipelineModule(),
+        window.XRExtras.AlmostThere.pipelineModule(),
         window.XRExtras.FullWindowCanvas.pipelineModule(),
         window.XRExtras.Loading.pipelineModule(),
         window.XRExtras.RuntimeError.pipelineModule(),
-        arStagingPipelineModule(),                    // App Logic
+        arStagingPipelineModule(),
     ]);
 
     XR8.run({ canvas: document.getElementById('camera-canvas') });
@@ -319,9 +354,6 @@ function updateBudget() {
     document.getElementById('budget-value').textContent = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Reflects current surface-lock state in the Place button (disabled/dimmed
-// until a real surface is confirmed) and, if a catalog item is selected,
-// in the placement hint text.
 function updatePlacementAvailability(ready) {
     placeBtn.disabled = !ready;
     placeBtn.style.opacity = ready ? '1' : '0.4';
@@ -332,7 +364,6 @@ function updatePlacementAvailability(ready) {
     }
 }
 
-// Hamburger Drawer Toggle
 const catalogDrawer = document.getElementById('catalog-drawer');
 const hamburgerBtn = document.getElementById('hamburger-btn');
 const closeDrawerBtn = document.getElementById('close-drawer-btn');
@@ -350,7 +381,6 @@ function toggleDrawer(open) {
 hamburgerBtn.addEventListener('click', () => toggleDrawer());
 closeDrawerBtn.addEventListener('click', () => toggleDrawer(false));
 
-// Clear All Models
 document.getElementById('clear-btn').addEventListener('click', () => {
     selectPlacedModel(null);
     spawnedModels.forEach(entry => scene.remove(entry.mesh));
@@ -358,7 +388,6 @@ document.getElementById('clear-btn').addEventListener('click', () => {
     updateBudget();
 });
 
-// Dynamic Delete Button Action
 document.getElementById('delete-selected-btn').addEventListener('click', () => {
     if (!selectedPlacedEntry) return;
 
@@ -381,11 +410,7 @@ document.getElementById('delete-selected-btn').addEventListener('click', () => {
     updateBudget();
 });
 
-// Dynamic Place Button Action
 placeBtn.addEventListener('click', () => {
-    // Guard against placement before a real surface has been confirmed —
-    // without this check, a tap before tracking locks on would place the
-    // model at whatever stale/default transform `reticle` currently holds.
     if (selectedModelData && surfaceLocked) {
         spawnModelAtReticle(selectedModelData);
     }
@@ -394,11 +419,9 @@ placeBtn.addEventListener('click', () => {
 function spawnModelAtReticle(modelData) {
     const glbUrl = modelData.glbUrl;
 
-    // Flash the CSS reticle white as placement feedback
     cssReticle.classList.add('flash');
     setTimeout(() => cssReticle.classList.remove('flash'), 200);
 
-    // Snapshot the anchor's world position at the moment of the tap
     const placementPosition = reticle.position.clone();
     const placementQuaternion = reticle.quaternion.clone();
 
@@ -410,23 +433,26 @@ function spawnModelAtReticle(modelData) {
 }
 
 function addMeshToScene(mesh, modelData, placementPosition, placementQuaternion) {
-    mesh.position.copy(placementPosition || reticle.position);
+    // Lock model to 1:1 true scale
+    mesh.scale.set(1, 1, 1);
 
-    // Extract only Y rotation so model stays upright on the floor plane
+    // Force model position directly to focus point / reticle location
+    const targetPos = placementPosition || reticle.position;
+    mesh.position.copy(targetPos);
+
+    // Extract Y-axis rotation only, locking Z and X rotation
     const euler = new THREE.Euler().setFromQuaternion(placementQuaternion || reticle.quaternion, 'YXZ');
-    mesh.rotation.y = euler.y;
+    mesh.rotation.set(0, euler.y, 0);
 
     scene.add(mesh);
     const entry = { mesh, price: modelData.price, glbUrl: modelData.glbUrl };
     spawnedModels.push(entry);
 
-    // Hide the placement hint permanently after first model is placed
     if (spawnedModels.length === 1) {
         hintEl.classList.remove('show-hint');
         hintEl.style.display = 'none';
     }
 
-    // Automatically select newly placed model
     selectPlacedModel(entry);
     updateBudget();
 }
@@ -468,7 +494,6 @@ function selectCatalogModel(card, assetData) {
     card.classList.add('selected');
     selectedModelData = assetData;
 
-    // Show place button & placement guidance hint, reflecting current tracking state
     placeBtn.style.display = 'inline-flex';
     hintEl.classList.add('show-hint');
     updatePlacementAvailability(surfaceLocked);

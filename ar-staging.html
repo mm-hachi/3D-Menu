@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Shot 47 XLVII | 8th Wall AR Sandbox</title>
 
-    <!-- 8th Wall SLAM Engine & Extras (open source engine binary, no app key required) -->
+    <!-- 8th Wall SLAM Engine & Extras -->
     <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js" async crossorigin="anonymous"
         data-preload-chunks="slam"></script>
     <script src="https://cdn.jsdelivr.net/npm/@8thwall/xrextras@1/dist/xrextras.js" crossorigin="anonymous"></script>
@@ -16,10 +16,10 @@
 </head>
 
 <body>
-    <!-- 8th Wall renders the camera feed and 3D scene directly to this canvas -->
+    <!-- 8th Wall renders camera feed and 3D scene to this canvas -->
     <canvas id="camera-canvas"></canvas>
 
-    <!-- CSS Reticle — always pixel-perfect at viewport center -->
+    <!-- CSS Reticle — center of viewport -->
     <div id="reticle" style="display:none;">
         <div class="reticle-paren reticle-left"></div>
         <div class="reticle-paren reticle-right"></div>
@@ -34,7 +34,7 @@
                     <span class="btn-icon">←</span> Exit
                 </a>
                 <button id="hamburger-btn" class="glass-btn icon-text-btn" title="Toggle Spatial Catalog">
-                    <span class="btn-icon">☰</span> Menu
+                    <span class="btn-icon">☰</span> Catalog
                 </button>
             </div>
 
@@ -51,27 +51,25 @@
         <!-- Placement Guidance Readout -->
         <div id="placement-hint">Aim at a surface and tap 'Place Model'</div>
 
-        <!-- Dynamic Action Toolbar (Floating Center/Bottom) -->
+        <!-- Dynamic Action Toolbar -->
         <div id="action-bar">
-            <!-- Dynamic Place Button: Appears when catalog model selected -->
             <button id="place-btn" class="btn-action btn-place" style="display: none;">
                 ➕ Place Model
             </button>
 
-            <!-- Dynamic Delete Button: Appears when placed 3D model selected -->
             <button id="delete-selected-btn" class="btn-action btn-delete" style="display: none;">
                 🗑️ Delete Selected
             </button>
         </div>
 
-        <!-- Toggleable Catalog Drawer (Hamburger Menu) -->
+        <!-- Toggleable Catalog Drawer -->
         <div id="catalog-drawer" class="collapsed">
             <div class="drawer-header">
                 <div class="drawer-title-group">
                     <span class="drawer-title">Spatial Catalog</span>
                     <span class="drawer-subtitle">Select an asset to stage</span>
                 </div>
-                <button id="close-drawer-btn" class="icon-close-btn" title="Close Catalog">✕</button>
+                <button id="close-drawer-btn" class="icon-close-btn" title="Close Catalog">Place</button>
             </div>
             <div id="category-tabs">
                 <button class="tab-btn active" data-category="furniture">Furniture</button>

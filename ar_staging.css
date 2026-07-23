@@ -25,7 +25,7 @@ body {
     display: block;
 }
 
-/* --- Parentheses Reticle (CSS, always screen-center) --- */
+/* --- Parentheses Reticle --- */
 #reticle {
     position: fixed;
     top: 50%;
@@ -59,7 +59,6 @@ body {
     border-radius: 0 10px 10px 0;
 }
 
-/* Flash white on placement */
 #reticle.flash .reticle-paren {
     border-color: #ffffff;
 }
@@ -71,12 +70,10 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    /* Pass touches through to canvas by default for 3D selection & hit testing */
     pointer-events: none;
     z-index: 100;
 }
 
-/* Interactive overlay elements capture pointer events */
 #hud-top,
 #action-bar,
 #catalog-drawer {
@@ -208,7 +205,7 @@ body {
     opacity: 1 !important;
 }
 
-/* --- Floating Action Toolbar (Place & Delete Buttons) --- */
+/* --- Floating Action Toolbar --- */
 #action-bar {
     position: absolute;
     bottom: 30px;
@@ -308,22 +305,23 @@ body {
 }
 
 .icon-close-btn {
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
-    color: #a1a1a6;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    font-size: 0.9rem;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+    padding: 6px 14px;
+    border-radius: 16px;
+    font-size: 0.8rem;
+    font-weight: 600;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background 0.2s, color 0.2s;
+    transition: background 0.2s, color 0.2s, transform 0.15s;
 }
 
 .icon-close-btn:active {
     background: rgba(255, 255, 255, 0.25);
+    transform: scale(0.95);
     color: #ffffff;
 }
 
