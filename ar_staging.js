@@ -83,9 +83,9 @@ function pumpPreloadQueue() {
     }
 }
 
-// Reticle Setup
-const reticleGeo = new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2);
-const reticleMat = new THREE.MeshBasicMaterial({ color: 0x34c759 });
+// CSS Reticle — positioned in DOM, always pixel-perfect at screen center
+const cssReticle = document.getElementById('reticle');
+let hasHitSurface = false; // tracks first surface detection to show reticle
 
 // Raycasting for Model Selection
 const raycaster = new THREE.Raycaster();
@@ -166,10 +166,9 @@ const arStagingPipelineModule = () => {
             dirLight.position.set(1, 4, 2);
             scene.add(dirLight);
 
-            // Add reticle
-            reticle = new THREE.Mesh(reticleGeo, reticleMat);
-            reticle.matrixAutoUpdate = false;
-            reticle.visible = false;
+            // We use a CSS reticle (always screen-center) instead of a 3D mesh.
+            // A hidden THREE.Object3D acts as the placement anchor for hit test results.
+            reticle = new THREE.Object3D();
             scene.add(reticle);
 
             // Add selection box helper for highlighting 3D models
@@ -210,19 +209,21 @@ const arStagingPipelineModule = () => {
 
             if (hitTestResults && hitTestResults.length > 0) {
                 const hit = hitTestResults[0];
-                reticle.visible = true;
 
+                // Update invisible anchor so placement uses the correct world position
                 const p = hit.position;
                 const r = hit.rotation;
-                const quaternion = new THREE.Quaternion(r.x, r.y, r.z, r.w);
+                reticle.position.set(p.x, p.y, p.z);
+                reticle.quaternion.set(r.x, r.y, r.z, r.w);
 
-                reticle.matrix.compose(
-                    new THREE.Vector3(p.x, p.y, p.z),
-                    quaternion,
-                    new THREE.Vector3(1, 1, 1)
-                );
+                // Show CSS reticle on first surface lock
+                if (!hasHitSurface) {
+                    hasHitSurface = true;
+                    cssReticle.style.display = 'flex';
+                }
             } else {
-                reticle.visible = false;
+                // Dim but keep visible so it doesn't flash in/out constantly
+                cssReticle.style.opacity = hasHitSurface ? '0.35' : '0';
             }
 
             // Keep selection bounding box aligned with selected object
@@ -315,7 +316,7 @@ document.getElementById('delete-selected-btn').addEventListener('click', () => {
 // Dynamic Place Button Action
 const placeBtn = document.getElementById('place-btn');
 placeBtn.addEventListener('click', () => {
-    if (reticle.visible && selectedModelData) {
+    if (selectedModelData) {
         spawnModelAtReticle(selectedModelData);
     }
 });
@@ -323,28 +324,38 @@ placeBtn.addEventListener('click', () => {
 function spawnModelAtReticle(modelData) {
     const glbUrl = modelData.glbUrl;
 
-    // Visual reticle flash feedback
-    reticleMat.color.setHex(0xffffff);
-    setTimeout(() => reticleMat.color.setHex(0x34c759), 200);
+    // Flash the CSS reticle white as placement feedback
+    cssReticle.classList.add('flash');
+    setTimeout(() => cssReticle.classList.remove('flash'), 200);
 
-    const placementMatrix = reticle.matrix.clone();
+    // Snapshot the anchor's world position at the moment of the tap
+    const placementPosition = reticle.position.clone();
+    const placementQuaternion = reticle.quaternion.clone();
+
     const templatePromise = modelCache[glbUrl] || preloadModel(glbUrl, { priority: true });
 
     templatePromise
-        .then((template) => addMeshToScene(template.clone(), modelData, placementMatrix))
+        .then((template) => addMeshToScene(template.clone(), modelData, placementPosition, placementQuaternion))
         .catch((err) => console.error('[spawnModel] Load error:', err));
 }
 
-function addMeshToScene(mesh, modelData, placementMatrix) {
-    const matrix = placementMatrix || reticle.matrix;
-    mesh.position.setFromMatrixPosition(matrix);
+function addMeshToScene(mesh, modelData, placementPosition, placementQuaternion) {
+    mesh.position.copy(placementPosition || reticle.position);
 
-    const euler = new THREE.Euler().setFromRotationMatrix(matrix, 'YXZ');
+    // Extract only Y rotation so model stays upright on the floor plane
+    const euler = new THREE.Euler().setFromQuaternion(placementQuaternion || reticle.quaternion, 'YXZ');
     mesh.rotation.y = euler.y;
 
     scene.add(mesh);
     const entry = { mesh, price: modelData.price, glbUrl: modelData.glbUrl };
     spawnedModels.push(entry);
+
+    // Hide the placement hint permanently after first model is placed
+    if (spawnedModels.length === 1) {
+        const hint = document.getElementById('placement-hint');
+        hint.classList.remove('show-hint');
+        hint.style.display = 'none';
+    }
 
     // Automatically select newly placed model
     selectPlacedModel(entry);

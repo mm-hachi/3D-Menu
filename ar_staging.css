@@ -25,6 +25,45 @@ body {
     display: block;
 }
 
+/* --- Parentheses Reticle (CSS, always screen-center) --- */
+#reticle {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 56px;
+    height: 56px;
+    z-index: 50;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.reticle-paren {
+    width: 18px;
+    height: 48px;
+    border: 3px solid #34c759;
+    opacity: 0.92;
+    filter: drop-shadow(0 0 6px rgba(52, 199, 89, 0.7));
+    transition: opacity 0.2s ease;
+}
+
+.reticle-left {
+    border-right: none;
+    border-radius: 10px 0 0 10px;
+}
+
+.reticle-right {
+    border-left: none;
+    border-radius: 0 10px 10px 0;
+}
+
+/* Flash white on placement */
+#reticle.flash .reticle-paren {
+    border-color: #ffffff;
+}
+
 /* --- UI Overlay HUD --- */
 #ar-overlay {
     position: absolute;

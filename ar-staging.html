@@ -19,6 +19,12 @@
     <!-- 8th Wall renders the camera feed and 3D scene directly to this canvas -->
     <canvas id="camera-canvas"></canvas>
 
+    <!-- CSS Reticle — always pixel-perfect at viewport center -->
+    <div id="reticle" style="display:none;">
+        <div class="reticle-paren reticle-left"></div>
+        <div class="reticle-paren reticle-right"></div>
+    </div>
+
     <!-- Custom AR Overlay -->
     <div id="ar-overlay">
         <!-- Top HUD Bar -->
