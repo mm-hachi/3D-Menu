@@ -85,7 +85,21 @@ function pumpPreloadQueue() {
 
 // CSS Reticle — positioned in DOM, always pixel-perfect at screen center
 const cssReticle = document.getElementById('reticle');
-let hasHitSurface = false; // tracks first surface detection to show reticle
+const hintEl = document.getElementById('placement-hint');
+const placeBtn = document.getElementById('place-btn');
+let hasHitSurface = false; // tracks whether a surface has EVER been found (controls dim-vs-hidden)
+
+// Surface-scan gating (mirrors ARKit/Quick Look): a raw FEATURE_POINT hit is
+// just a noisy depth guess, not a confirmed surface. Placement is only ever
+// allowed off an actual ESTIMATED_SURFACE_PLANE. `surfaceLocked` reflects the
+// CURRENT frame's tracking confidence (with a short miss-tolerance buffer so
+// a single dropped frame doesn't yank the reticle/button around), and is the
+// single source of truth gating both the Place button and hint text.
+const MISS_TOLERANCE_FRAMES = 6;
+let missStreak = 0;
+let surfaceLocked = false;
+const SCANNING_HINT = 'Move your device slowly to scan for a surface…';
+const READY_HINT = "Aim at a surface and tap 'Place Model'";
 
 // Raycasting for Model Selection
 const raycaster = new THREE.Raycaster();
@@ -200,6 +214,8 @@ const arStagingPipelineModule = () => {
                 // Desktop / Mouse fallback
                 handleCanvasTap(e.clientX, e.clientY);
             });
+
+            updatePlacementAvailability(false);
         },
         onUpdate: () => {
             if (!scene) return;
@@ -207,23 +223,42 @@ const arStagingPipelineModule = () => {
             // Perform hit test straight out from viewport center (0.5, 0.5)
             const hitTestResults = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
 
-            if (hitTestResults && hitTestResults.length > 0) {
-                const hit = hitTestResults[0];
+            // Only an ESTIMATED_SURFACE_PLANE hit counts as a confirmed, placeable
+            // surface. A lone FEATURE_POINT is a noisy single-point depth guess —
+            // treating it as valid is what causes "random" placement/scale.
+            const planeHit = hitTestResults?.find((hit) => hit.type === 'ESTIMATED_SURFACE_PLANE');
+
+            if (planeHit) {
+                missStreak = 0;
 
                 // Update invisible anchor so placement uses the correct world position
-                const p = hit.position;
-                const r = hit.rotation;
+                const p = planeHit.position;
+                const r = planeHit.rotation;
                 reticle.position.set(p.x, p.y, p.z);
                 reticle.quaternion.set(r.x, r.y, r.z, r.w);
 
-                // Show CSS reticle on first surface lock
-                if (!hasHitSurface) {
-                    hasHitSurface = true;
-                    cssReticle.style.display = 'flex';
+                hasHitSurface = true;
+                cssReticle.style.display = 'flex';
+                cssReticle.style.opacity = '1';
+
+                if (!surfaceLocked) {
+                    surfaceLocked = true;
+                    updatePlacementAvailability(true);
                 }
             } else {
-                // Dim but keep visible so it doesn't flash in/out constantly
-                cssReticle.style.opacity = hasHitSurface ? '0.35' : '0';
+                missStreak += 1;
+                // Tolerate a handful of dropped frames before treating the
+                // surface as lost, so brief tracking hiccups don't flicker
+                // the reticle or the Place button in and out.
+                if (missStreak > MISS_TOLERANCE_FRAMES) {
+                    // Dim but keep visible so it doesn't flash in/out constantly
+                    cssReticle.style.opacity = hasHitSurface ? '0.35' : '0';
+
+                    if (surfaceLocked) {
+                        surfaceLocked = false;
+                        updatePlacementAvailability(false);
+                    }
+                }
             }
 
             // Keep selection bounding box aligned with selected object
@@ -262,6 +297,19 @@ if (window.XR8) {
 function updateBudget() {
     const total = spawnedModels.reduce((sum, item) => sum + (item.price || 0), 0);
     document.getElementById('budget-value').textContent = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Reflects current surface-lock state in the Place button (disabled/dimmed
+// until a real surface is confirmed) and, if a catalog item is selected,
+// in the placement hint text.
+function updatePlacementAvailability(ready) {
+    placeBtn.disabled = !ready;
+    placeBtn.style.opacity = ready ? '1' : '0.4';
+    placeBtn.style.pointerEvents = ready ? 'auto' : 'none';
+
+    if (selectedModelData) {
+        hintEl.textContent = ready ? READY_HINT : SCANNING_HINT;
+    }
 }
 
 // Hamburger Drawer Toggle
@@ -314,9 +362,11 @@ document.getElementById('delete-selected-btn').addEventListener('click', () => {
 });
 
 // Dynamic Place Button Action
-const placeBtn = document.getElementById('place-btn');
 placeBtn.addEventListener('click', () => {
-    if (selectedModelData) {
+    // Guard against placement before a real surface has been confirmed —
+    // without this check, a tap before tracking locks on would place the
+    // model at whatever stale/default transform `reticle` currently holds.
+    if (selectedModelData && surfaceLocked) {
         spawnModelAtReticle(selectedModelData);
     }
 });
@@ -352,9 +402,8 @@ function addMeshToScene(mesh, modelData, placementPosition, placementQuaternion)
 
     // Hide the placement hint permanently after first model is placed
     if (spawnedModels.length === 1) {
-        const hint = document.getElementById('placement-hint');
-        hint.classList.remove('show-hint');
-        hint.style.display = 'none';
+        hintEl.classList.remove('show-hint');
+        hintEl.style.display = 'none';
     }
 
     // Automatically select newly placed model
@@ -399,9 +448,10 @@ function selectCatalogModel(card, assetData) {
     card.classList.add('selected');
     selectedModelData = assetData;
 
-    // Show place button & placement guidance hint
+    // Show place button & placement guidance hint, reflecting current tracking state
     placeBtn.style.display = 'inline-flex';
-    document.getElementById('placement-hint').classList.add('show-hint');
+    hintEl.classList.add('show-hint');
+    updatePlacementAvailability(surfaceLocked);
 }
 
 function renderCatalog(category) {
