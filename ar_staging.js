@@ -89,16 +89,22 @@ const hintEl = document.getElementById('placement-hint');
 const placeBtn = document.getElementById('place-btn');
 let hasHitSurface = false; // tracks whether a surface has EVER been found (controls dim-vs-hidden)
 
-// Surface-scan gating (mirrors ARKit/Quick Look): a raw FEATURE_POINT hit is
-// just a noisy depth guess, not a confirmed surface. Placement is only ever
-// allowed off an actual ESTIMATED_SURFACE_PLANE. `surfaceLocked` reflects the
-// CURRENT frame's tracking confidence (with a short miss-tolerance buffer so
-// a single dropped frame doesn't yank the reticle/button around), and is the
-// single source of truth gating both the Place button and hint text.
+// Surface-scan gating (inspired by ARKit/Quick Look, tuned to be forgiving):
+// an ESTIMATED_SURFACE_PLANE hit is a confirmed, classified surface and locks
+// instantly. A raw FEATURE_POINT hit is a noisier single-point depth guess —
+// rather than rejecting it outright (which meant the app could hang forever
+// "scanning" in dim light or on low-texture surfaces where plane classification
+// rarely completes), it's accepted once it's been consistently present for a
+// short settle window. `hitStreak` decays gradually on a miss rather than
+// resetting to zero, so brief flicker between plane/feature/no-hit doesn't
+// restart the settle countdown from scratch.
 const MISS_TOLERANCE_FRAMES = 6;
+const FEATURE_POINT_SETTLE_FRAMES = 10; // ~0.3–0.4s of consistent tracking at 24–30fps
 let missStreak = 0;
+let hitStreak = 0;
 let surfaceLocked = false;
 const SCANNING_HINT = 'Move your device slowly to scan for a surface…';
+const DETECTING_HINT = 'Hold steady, locking onto surface…';
 const READY_HINT = "Aim at a surface and tap 'Place Model'";
 
 // Raycasting for Model Selection
@@ -223,30 +229,44 @@ const arStagingPipelineModule = () => {
             // Perform hit test straight out from viewport center (0.5, 0.5)
             const hitTestResults = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
 
-            // Only an ESTIMATED_SURFACE_PLANE hit counts as a confirmed, placeable
-            // surface. A lone FEATURE_POINT is a noisy single-point depth guess —
-            // treating it as valid is what causes "random" placement/scale.
             const planeHit = hitTestResults?.find((hit) => hit.type === 'ESTIMATED_SURFACE_PLANE');
+            const featureHit = hitTestResults?.find((hit) => hit.type === 'FEATURE_POINT');
+            const hit = planeHit || featureHit;
 
-            if (planeHit) {
+            if (hit) {
                 missStreak = 0;
 
-                // Update invisible anchor so placement uses the correct world position
-                const p = planeHit.position;
-                const r = planeHit.rotation;
+                // A classified plane is trusted immediately. A feature point
+                // still has to earn trust by building up its settle streak.
+                hitStreak = planeHit ? FEATURE_POINT_SETTLE_FRAMES : Math.min(hitStreak + 1, FEATURE_POINT_SETTLE_FRAMES);
+
+                // Update invisible anchor so placement uses the live world position
+                const p = hit.position;
+                const r = hit.rotation;
                 reticle.position.set(p.x, p.y, p.z);
                 reticle.quaternion.set(r.x, r.y, r.z, r.w);
 
-                hasHitSurface = true;
-                cssReticle.style.display = 'flex';
-                cssReticle.style.opacity = '1';
+                const isSettled = hitStreak >= FEATURE_POINT_SETTLE_FRAMES;
 
-                if (!surfaceLocked) {
-                    surfaceLocked = true;
-                    updatePlacementAvailability(true);
+                cssReticle.style.display = 'flex';
+                cssReticle.style.opacity = isSettled ? '1' : '0.5';
+
+                if (isSettled) {
+                    hasHitSurface = true;
+                    if (!surfaceLocked) {
+                        surfaceLocked = true;
+                        updatePlacementAvailability(true);
+                    }
+                } else if (selectedModelData) {
+                    hintEl.textContent = DETECTING_HINT;
                 }
             } else {
                 missStreak += 1;
+                // Decay gradually rather than resetting to zero instantly, so
+                // brief flicker between plane/feature/no-hit doesn't force the
+                // settle countdown to restart from scratch.
+                hitStreak = Math.max(0, hitStreak - 1);
+
                 // Tolerate a handful of dropped frames before treating the
                 // surface as lost, so brief tracking hiccups don't flicker
                 // the reticle or the Place button in and out.
