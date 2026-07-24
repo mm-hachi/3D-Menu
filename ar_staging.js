@@ -9,18 +9,17 @@ import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/fi
 import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. STATE & LOADERS
+// 1. STATE MANAGEMENT & ASSET PIPELINE
 // ─────────────────────────────────────────────────────────────────────────────
 
 let scene, camera, renderer;
-let reticle;
-let selectionBoxHelper;
-let planeIndicator;
+let reticle, planeIndicator, selectionBoxHelper, shadowPlane;
 
 const spawnedModels = [];
 let selectedModelData = null;
 let selectedPlacedEntry = null;
 
+// Three.js Cache & Loaders
 THREE.Cache.enabled = true;
 
 const dracoLoader = new DRACOLoader();
@@ -31,11 +30,11 @@ const gltfLoader = new GLTFLoader();
 gltfLoader.setDRACOLoader(dracoLoader);
 
 const modelCache = {};
-
-const PRELOAD_CONCURRENCY = 2;
+const PRELOAD_CONCURRENCY = 3;
 let activePreloads = 0;
 const preloadQueue = [];
 
+// Pre-fetches and parses GLTF models into memory for zero-latency spawning
 function preloadModel(glbUrl, { priority = false } = {}) {
     if (!glbUrl || modelCache[glbUrl]) return modelCache[glbUrl];
 
@@ -52,7 +51,7 @@ function preloadModel(glbUrl, { priority = false } = {}) {
                 undefined,
                 (err) => {
                     activePreloads--;
-                    console.error('[preloadModel] Load error:', err);
+                    console.error('[Preloader] Failed to load model:', err);
                     delete modelCache[glbUrl];
                     reject(err);
                     pumpPreloadQueue();
@@ -79,139 +78,83 @@ function pumpPreloadQueue() {
     }
 }
 
+// UI Elements
 const cssReticle = document.getElementById('reticle');
 const hintEl = document.getElementById('placement-hint');
 const placeBtn = document.getElementById('place-btn');
+const deleteBtn = document.getElementById('delete-selected-btn');
 
-const MISS_TOLERANCE_FRAMES = 6;
-let missStreak = 0;
 let surfaceLocked = false;
-const SCANNING_HINT = 'Move your device slowly to scan for a surface…';
-const READY_HINT = "Aim at a surface and tap 'Place Model'";
+let missStreak = 0;
+const MISS_TOLERANCE_FRAMES = 5;
 
-const TAP_MOVE_THRESHOLD = 10;
+const SCANNING_HINT = 'Move your device slowly to map the floor…';
+const READY_HINT = "Point at the floor and tap 'Place Model'";
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
+const TAP_MOVE_THRESHOLD = 12;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. HIT-TESTING & PLACED MODEL MANIPULATION
+// 2. ULTRA-FAST GROUND IDENTIFICATION & HIT-TESTING
 // ─────────────────────────────────────────────────────────────────────────────
 
 const _upVec = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
-const _reusableQuat = new THREE.Quaternion();
+const _tempQuat = new THREE.Quaternion();
 
 function classifyPlaneOrientation(rotation) {
     if (!rotation || typeof rotation.x !== 'number') return 'horizontal';
-
-    const q = _reusableQuat.set(rotation.x, rotation.y, rotation.z, rotation.w);
-    _upVec.set(0, 1, 0).applyQuaternion(q);
-    const alignment = Math.abs(_upVec.dot(_worldUp));
-    if (alignment > 0.8) return 'horizontal';
-    if (alignment < 0.35) return 'vertical';
+    _tempQuat.set(rotation.x, rotation.y, rotation.z, rotation.w);
+    _upVec.set(0, 1, 0).applyQuaternion(_tempQuat);
+    const dot = Math.abs(_upVec.dot(_worldUp));
+    if (dot > 0.75) return 'horizontal';
+    if (dot < 0.35) return 'vertical';
     return 'angled';
 }
 
-// Picks the best hit test result for the current frame, preferring — in
-// order — a horizontal plane (floor/tabletop), then a vertical plane (wall),
-// then any other classified plane. Returns null if no classified plane is
-// present. FEATURE_POINT is intentionally never used as a fallback: it's a
-// single tracked visual point with no real orientation of its own, so any
-// rotation attached to it would have to be invented rather than measured —
-// which is exactly what causes models to place with the wrong orientation
-// or on a surface that doesn't actually exist yet.
-function pickBestHit(hitTestResults) {
-    if (!hitTestResults || hitTestResults.length === 0) return null;
+// High-speed hit testing prioritize real horizontal surface planes for rapid floor mapping
+function findFastGroundHit(hitResults) {
+    if (!hitResults || hitResults.length === 0) return null;
 
-    const planeHits = hitTestResults.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE');
-    if (planeHits.length === 0) return null;
-
-    const horizontal = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
-    if (horizontal) return horizontal;
-
-    const vertical = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'vertical');
-    if (vertical) return vertical;
-
-    return planeHits[0];
-}
-
-function selectPlacedModel(entry) {
-    selectedPlacedEntry = entry;
-    const deleteBtn = document.getElementById('delete-selected-btn');
-
-    if (entry) {
-        selectionBoxHelper.setFromObject(entry.mesh);
-        selectionBoxHelper.visible = true;
-        deleteBtn.style.display = 'inline-flex';
-    } else {
-        selectionBoxHelper.visible = false;
-        deleteBtn.style.display = 'none';
+    // 1. High Priority: Direct Horizontal Planes
+    const surfacePlanes = hitResults.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE');
+    if (surfacePlanes.length > 0) {
+        const horizontalPlane = surfacePlanes.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
+        if (horizontalPlane) return horizontalPlane;
+        return surfacePlanes[0];
     }
-}
 
-function handleCanvasTap(clientX, clientY) {
-    if (!camera || !scene) return;
-
-    pointer.x = (clientX / window.innerWidth) * 2 - 1;
-    pointer.y = -(clientY / window.innerHeight) * 2 + 1;
-
-    raycaster.setFromCamera(pointer, camera);
-
-    const targetMeshes = spawnedModels.map(item => item.mesh);
-    const intersects = raycaster.intersectObjects(targetMeshes, true);
-
-    if (intersects.length > 0) {
-        let topObj = intersects[0].object;
-        while (topObj.parent && topObj.parent !== scene) {
-            topObj = topObj.parent;
+    // 2. Fallback: Instant Feature Point Anchoring for low-texture floors
+    const featurePoints = hitResults.filter((h) => h.type === 'FEATURE_POINT');
+    if (featurePoints.length > 0) {
+        const hit = featurePoints[0];
+        if (!hit.rotation) {
+            hit.rotation = { x: 0, y: 0, z: 0, w: 1 };
         }
-
-        const matchedEntry = spawnedModels.find(e => e.mesh === topObj);
-        if (matchedEntry) {
-            selectPlacedModel(matchedEntry);
-            return;
-        }
+        return hit;
     }
 
-    selectPlacedModel(null);
-}
-
-function moveSelectedModel(clientX, clientY) {
-    if (!selectedPlacedEntry || !window.XR8 || !window.XR8.XrController) return;
-
-    const nx = clientX / window.innerWidth;
-    const ny = clientY / window.innerHeight;
-    const results = XR8.XrController.hitTest(nx, ny, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
-    const hit = pickBestHit(results);
-    if (!hit) return;
-
-    selectedPlacedEntry.mesh.position.set(hit.position.x, hit.position.y, hit.position.z);
-    if (selectionBoxHelper.visible) {
-        selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
-    }
-}
-
-function angleBetweenTouches(touches) {
-    return Math.atan2(touches[1].clientY - touches[0].clientY, touches[1].clientX - touches[0].clientX);
+    return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. 8TH WALL PIPELINE LOGIC (SLAM ENGINE)
+// 3. 8TH WALL AR PIPELINE & CANVAS INTERACTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 const arStagingPipelineModule = () => {
     let touchStartX = 0;
     let touchStartY = 0;
-    let shadowPlane;
+    let isDragging = false;
+    let isRotating = false;
+    let rotateStartAngle = 0;
+    let rotateStartY = 0;
 
     return {
-        name: 'ar-staging-logic',
+        name: 'ar-staging-core',
         onStart: ({ canvas }) => {
             if (!XR8.Threejs || !XR8.Threejs.xrScene) {
-                console.error('8th Wall Three.js pipeline not available.');
-                hintEl.textContent = 'AR initialization failed. Please reload.';
-                hintEl.classList.add('show-hint');
+                console.error('8th Wall Three.js pipeline is missing.');
                 return;
             }
 
@@ -220,60 +163,57 @@ const arStagingPipelineModule = () => {
             camera = xrCamera;
             renderer = xrRenderer;
 
-            if (renderer && renderer.setPixelRatio) {
+            if (renderer) {
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+                renderer.shadowMap.enabled = true;
+                renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             }
 
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-            // Scene Lighting
-            const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.5);
-            light.position.set(0.5, 1, 0.25);
-            scene.add(light);
+            // Realistic AR Lighting setup
+            const ambientLight = new THREE.HemisphereLight(0xffffff, 0x444455, 1.4);
+            ambientLight.position.set(0, 50, 0);
+            scene.add(ambientLight);
 
             const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-            dirLight.position.set(1, 4, 2);
+            dirLight.position.set(2, 5, 2);
             dirLight.castShadow = true;
             dirLight.shadow.mapSize.width = 1024;
             dirLight.shadow.mapSize.height = 1024;
-            dirLight.shadow.camera.near = 0.1;
-            dirLight.shadow.camera.far = 10;
-            dirLight.shadow.bias = -0.001;
+            dirLight.shadow.bias = -0.0005;
             scene.add(dirLight);
 
+            // 3D Visual Reticle & Surface Indicators
             reticle = new THREE.Object3D();
             scene.add(reticle);
 
-            const planeIndicatorGeo = new THREE.BoxGeometry(0.5, 0.01, 0.5);
-            const planeIndicatorMat = new THREE.MeshBasicMaterial({
-                color: 0xffffff,
+            const planeGeo = new THREE.PlaneGeometry(0.6, 0.6);
+            const planeMat = new THREE.MeshBasicMaterial({
+                color: 0x34c759,
                 transparent: true,
-                opacity: 0.16,
-                depthWrite: false,
+                opacity: 0.25,
+                side: THREE.DoubleSide,
+                depthWrite: false
             });
-            planeIndicator = new THREE.Mesh(planeIndicatorGeo, planeIndicatorMat);
+            planeIndicator = new THREE.Mesh(planeGeo, planeMat);
+            planeIndicator.rotation.x = -Math.PI / 2;
             planeIndicator.visible = false;
             scene.add(planeIndicator);
 
-            selectionBoxHelper = new THREE.BoxHelper(new THREE.Mesh(), 0x007aff);
+            // Selection Bounding Box
+            selectionBoxHelper = new THREE.BoxHelper(new THREE.Mesh(), 0x34c759);
             selectionBoxHelper.visible = false;
             scene.add(selectionBoxHelper);
 
-            // Contact Shadow Catcher Plane
+            // Dynamic Floor Shadow Receiver
             shadowPlane = new THREE.Mesh(
-                new THREE.PlaneGeometry(20, 20),
-                new THREE.ShadowMaterial({ opacity: 0.25 })
+                new THREE.PlaneGeometry(30, 30),
+                new THREE.ShadowMaterial({ opacity: 0.3 })
             );
             shadowPlane.rotation.x = -Math.PI / 2;
             shadowPlane.receiveShadow = true;
             scene.add(shadowPlane);
 
-            let isDragging = false;
-            let isRotating = false;
-            let rotateStartAngle = 0;
-            let rotateStartY = 0;
-
+            // Touch & Gesture Listeners for Manipulation
             canvas.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 1) {
                     touchStartX = e.touches[0].clientX;
@@ -283,14 +223,20 @@ const arStagingPipelineModule = () => {
                 } else if (e.touches.length === 2 && selectedPlacedEntry) {
                     isRotating = true;
                     isDragging = false;
-                    rotateStartAngle = angleBetweenTouches(e.touches);
+                    rotateStartAngle = Math.atan2(
+                        e.touches[1].clientY - e.touches[0].clientY,
+                        e.touches[1].clientX - e.touches[0].clientX
+                    );
                     rotateStartY = selectedPlacedEntry.mesh.rotation.y;
                 }
             }, { passive: true });
 
             canvas.addEventListener('touchmove', (e) => {
                 if (isRotating && e.touches.length === 2 && selectedPlacedEntry) {
-                    const currentAngle = angleBetweenTouches(e.touches);
+                    const currentAngle = Math.atan2(
+                        e.touches[1].clientY - e.touches[0].clientY,
+                        e.touches[1].clientX - e.touches[0].clientX
+                    );
                     selectedPlacedEntry.mesh.rotation.y = rotateStartY + (currentAngle - rotateStartAngle);
                     if (selectionBoxHelper.visible) {
                         selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
@@ -301,71 +247,60 @@ const arStagingPipelineModule = () => {
                 if (e.touches.length === 1 && selectedPlacedEntry) {
                     const touch = e.touches[0];
                     if (!isDragging) {
-                        const dx = touch.clientX - touchStartX;
-                        const dy = touch.clientY - touchStartY;
-                        if (Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD) {
-                            isDragging = true;
-                        }
+                        const dist = Math.hypot(touch.clientX - touchStartX, touch.clientY - touchStartY);
+                        if (dist > TAP_MOVE_THRESHOLD) isDragging = true;
                     }
                     if (isDragging) {
-                        moveSelectedModel(touch.clientX, touch.clientY);
+                        dragSelectedModel(touch.clientX, touch.clientY);
                     }
                 }
             }, { passive: true });
 
             canvas.addEventListener('touchend', (e) => {
-                if (isRotating) {
+                if (isRotating || isDragging) {
                     isRotating = false;
-                    return;
-                }
-                if (isDragging) {
                     isDragging = false;
                     return;
                 }
                 if (e.changedTouches.length === 1) {
                     const endX = e.changedTouches[0].clientX;
                     const endY = e.changedTouches[0].clientY;
-
                     if (Math.hypot(endX - touchStartX, endY - touchStartY) < TAP_MOVE_THRESHOLD) {
-                        handleCanvasTap(endX, endY);
+                        selectModelAtTouch(endX, endY);
                     }
                 }
             });
 
             canvas.addEventListener('click', (e) => {
-                handleCanvasTap(e.clientX, e.clientY);
+                selectModelAtTouch(e.clientX, e.clientY);
             });
 
             updatePlacementAvailability(false);
         },
+
         onUpdate: () => {
-            if (!scene) return;
+            if (!scene || !window.XR8 || !window.XR8.XrController) return;
 
-            const hitTestResults = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
-            const hit = pickBestHit(hitTestResults);
+            // Perform rapid center-screen hit-test
+            const hitResults = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
+            const groundHit = findFastGroundHit(hitResults);
 
-            if (hit) {
+            if (groundHit) {
                 missStreak = 0;
+                const p = groundHit.position;
+                const r = groundHit.rotation;
 
-                const p = hit.position;
-                const r = hit.rotation;
-
-                // Sync 3D reticle to the hit surface
+                // Sync 3D Reticle
                 reticle.position.set(p.x, p.y, p.z);
                 reticle.quaternion.set(r.x, r.y, r.z, r.w);
 
                 if (planeIndicator) {
-                    planeIndicator.position.copy(reticle.position);
-                    planeIndicator.quaternion.copy(reticle.quaternion);
+                    planeIndicator.position.set(p.x, p.y + 0.002, p.z);
                 }
 
-                // Keep the floor's contact-shadow catcher aligned with the
-                // live detected floor height — but only on a horizontal hit.
-                // A vertical (wall) hit has no bearing on where the floor is,
-                // so syncing to it unconditionally would yank the shadow
-                // plane up to wall height while aiming at a wall.
-                if (shadowPlane && classifyPlaneOrientation(r) === 'horizontal') {
-                    shadowPlane.position.y = p.y - 0.001; // tiny offset avoids z-fighting with the real floor
+                // Smoothly adapt shadow plane to floor elevation
+                if (shadowPlane) {
+                    shadowPlane.position.y = p.y - 0.001;
                 }
 
                 if (!surfaceLocked) {
@@ -375,7 +310,7 @@ const arStagingPipelineModule = () => {
                     updatePlacementAvailability(true);
                 }
             } else {
-                missStreak += 1;
+                missStreak++;
                 if (missStreak > MISS_TOLERANCE_FRAMES && surfaceLocked) {
                     surfaceLocked = false;
                     cssReticle.classList.remove('locked');
@@ -391,7 +326,8 @@ const arStagingPipelineModule = () => {
     };
 };
 
-const onxrloaded = () => {
+// Initialize Keyless 8th Wall Engine
+const initAR = () => {
     XR8.addCameraPipelineModules([
         XR8.GlTextureRenderer.pipelineModule(),
         XR8.Threejs.pipelineModule(),
@@ -407,27 +343,169 @@ const onxrloaded = () => {
 };
 
 if (window.XR8) {
-    onxrloaded();
+    initAR();
 } else {
-    window.addEventListener('xrloaded', onxrloaded);
+    window.addEventListener('xrloaded', initAR);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. UI CONTROLS & DYNAMIC BUTTON HANDLERS
+// 4. MULTI-OBJECT SPAWNING, POSITIONING & DISPOSAL
+// ─────────────────────────────────────────────────────────────────────────────
+
+function deepCloneGLTF(source) {
+    const clone = source.clone(true);
+    clone.traverse((node) => {
+        if (node.isMesh) {
+            if (node.geometry) node.geometry = node.geometry.clone();
+            if (Array.isArray(node.material)) {
+                node.material = node.material.map((m) => m.clone());
+            } else if (node.material) {
+                node.material = node.material.clone();
+            }
+        }
+    });
+    return clone;
+}
+
+function spawnModelAtReticle(modelData) {
+    if (!surfaceLocked || !modelData?.glbUrl) return;
+
+    cssReticle.classList.add('flash');
+    setTimeout(() => cssReticle.classList.remove('flash'), 200);
+
+    const targetPos = reticle.position.clone();
+    const targetQuat = reticle.quaternion.clone();
+
+    const templatePromise = modelCache[modelData.glbUrl] || preloadModel(modelData.glbUrl, { priority: true });
+
+    templatePromise
+        .then((template) => {
+            const modelRoot = deepCloneGLTF(template);
+
+            const wrapper = new THREE.Group();
+            wrapper.add(modelRoot);
+
+            // Compute exact Bounding Box and offset pivot point to bottom-center
+            const box = new THREE.Box3().setFromObject(modelRoot);
+            if (!box.isEmpty()) {
+                const center = box.getCenter(new THREE.Vector3());
+                modelRoot.position.x -= center.x;
+                modelRoot.position.z -= center.z;
+                modelRoot.position.y -= box.min.y;
+            }
+
+            wrapper.position.copy(targetPos);
+            const euler = new THREE.Euler().setFromQuaternion(targetQuat, 'YXZ');
+            wrapper.rotation.y = euler.y;
+
+            modelRoot.traverse((node) => {
+                if (node.isMesh) {
+                    node.castShadow = true;
+                    node.receiveShadow = true;
+                }
+            });
+
+            scene.add(wrapper);
+
+            const entry = { mesh: wrapper, price: modelData.price, glbUrl: modelData.glbUrl };
+            spawnedModels.push(entry);
+
+            if (spawnedModels.length === 1) {
+                hintEl.classList.remove('show-hint');
+            }
+
+            setSelectedPlacedModel(entry);
+            updateBudget();
+        })
+        .catch((err) => console.error('[Spawn Error]', err));
+}
+
+function selectModelAtTouch(clientX, clientY) {
+    if (!camera || !scene || spawnedModels.length === 0) return;
+
+    pointer.x = (clientX / window.innerWidth) * 2 - 1;
+    pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(pointer, camera);
+    const meshes = spawnedModels.map((item) => item.mesh);
+    const intersects = raycaster.intersectObjects(meshes, true);
+
+    if (intersects.length > 0) {
+        let topObj = intersects[0].object;
+        while (topObj.parent && topObj.parent !== scene) {
+            topObj = topObj.parent;
+        }
+        const matched = spawnedModels.find((e) => e.mesh === topObj);
+        if (matched) {
+            setSelectedPlacedModel(matched);
+            return;
+        }
+    }
+
+    setSelectedPlacedModel(null);
+}
+
+function dragSelectedModel(clientX, clientY) {
+    if (!selectedPlacedEntry || !window.XR8 || !window.XR8.XrController) return;
+
+    const nx = clientX / window.innerWidth;
+    const ny = clientY / window.innerHeight;
+
+    const hits = XR8.XrController.hitTest(nx, ny, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
+    const groundHit = findFastGroundHit(hits);
+
+    if (groundHit) {
+        selectedPlacedEntry.mesh.position.set(groundHit.position.x, groundHit.position.y, groundHit.position.z);
+        if (selectionBoxHelper.visible) {
+            selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
+        }
+    }
+}
+
+function setSelectedPlacedModel(entry) {
+    selectedPlacedEntry = entry;
+    if (entry) {
+        selectionBoxHelper.setFromObject(entry.mesh);
+        selectionBoxHelper.visible = true;
+        deleteBtn.style.display = 'inline-flex';
+    } else {
+        selectionBoxHelper.visible = false;
+        deleteBtn.style.display = 'none';
+    }
+}
+
+function disposeMeshHierarchy(meshGroup) {
+    meshGroup.traverse((node) => {
+        if (node.isMesh) {
+            node.geometry?.dispose();
+            if (Array.isArray(node.material)) {
+                node.material.forEach((m) => m?.dispose());
+            } else if (node.material) {
+                node.material?.dispose();
+            }
+        }
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. UI CONTROL CONTROLLER & BUDGET TALLY
 // ─────────────────────────────────────────────────────────────────────────────
 
 function updateBudget() {
     const total = spawnedModels.reduce((sum, item) => sum + (item.price || 0), 0);
-    document.getElementById('budget-value').textContent = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    document.getElementById('budget-value').textContent = `$${total.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
 }
 
-function updatePlacementAvailability(ready) {
-    placeBtn.disabled = !ready;
-    placeBtn.style.opacity = ready ? '1' : '0.4';
-    placeBtn.style.pointerEvents = ready ? 'auto' : 'none';
+function updatePlacementAvailability(isReady) {
+    placeBtn.disabled = !isReady;
+    placeBtn.style.opacity = isReady ? '1' : '0.4';
+    placeBtn.style.pointerEvents = isReady ? 'auto' : 'none';
 
     if (selectedModelData) {
-        hintEl.textContent = ready ? READY_HINT : SCANNING_HINT;
+        hintEl.textContent = isReady ? READY_HINT : SCANNING_HINT;
     }
 }
 
@@ -448,124 +526,40 @@ function toggleDrawer(open) {
 hamburgerBtn.addEventListener('click', () => toggleDrawer());
 closeDrawerBtn.addEventListener('click', () => toggleDrawer(false));
 
-function deepCloneModel(source) {
-    const clone = source.clone(true);
-    clone.traverse((node) => {
-        if (node.isMesh) {
-            if (node.geometry) node.geometry = node.geometry.clone();
-            if (Array.isArray(node.material)) {
-                node.material = node.material.map(m => m.clone());
-            } else if (node.material) {
-                node.material = node.material.clone();
-            }
-        }
-    });
-    return clone;
-}
-
-function disposeHierarchy(root) {
-    root.traverse((node) => {
-        if (node.isMesh) {
-            node.geometry?.dispose();
-            const mats = Array.isArray(node.material) ? node.material : [node.material];
-            mats.forEach(m => m?.dispose());
-        }
-    });
-}
-
-document.getElementById('clear-btn').addEventListener('click', () => {
-    selectPlacedModel(null);
-    spawnedModels.forEach(entry => {
-        scene.remove(entry.mesh);
-        disposeHierarchy(entry.mesh);
-    });
-    spawnedModels.length = 0;
-    updateBudget();
-});
-
-document.getElementById('delete-selected-btn').addEventListener('click', () => {
-    if (!selectedPlacedEntry) return;
-
-    const entryToDelete = selectedPlacedEntry;
-    selectPlacedModel(null);
-
-    scene.remove(entryToDelete.mesh);
-    disposeHierarchy(entryToDelete.mesh);
-
-    const idx = spawnedModels.indexOf(entryToDelete);
-    if (idx !== -1) {
-        spawnedModels.splice(idx, 1);
-    }
-    updateBudget();
-});
-
 placeBtn.addEventListener('click', () => {
     if (selectedModelData && surfaceLocked) {
         spawnModelAtReticle(selectedModelData);
     }
 });
 
-function spawnModelAtReticle(modelData) {
-    const glbUrl = modelData.glbUrl;
+deleteBtn.addEventListener('click', () => {
+    if (!selectedPlacedEntry) return;
 
-    cssReticle.classList.add('flash');
-    setTimeout(() => cssReticle.classList.remove('flash'), 200);
+    const toDelete = selectedPlacedEntry;
+    setSelectedPlacedModel(null);
 
-    const placementPosition = reticle.position.clone();
-    const placementQuaternion = reticle.quaternion.clone();
+    scene.remove(toDelete.mesh);
+    disposeMeshHierarchy(toDelete.mesh);
 
-    const templatePromise = modelCache[glbUrl] || preloadModel(glbUrl, { priority: true });
-
-    templatePromise
-        .then((template) => {
-            const modelRoot = deepCloneModel(template);
-            addMeshToScene(modelRoot, modelData, placementPosition, placementQuaternion);
-        })
-        .catch((err) => console.error('[spawnModel] Load error:', err));
-}
-
-function addMeshToScene(mesh, modelData, placementPosition, placementQuaternion) {
-    const wrapper = new THREE.Group();
-    wrapper.add(mesh);
-
-    const box = new THREE.Box3().setFromObject(mesh);
-
-    // Pivot correction: align bottom-center of bounding box to origin
-    if (!box.isEmpty()) {
-        const centerX = (box.min.x + box.max.x) / 2;
-        const centerZ = (box.min.z + box.max.z) / 2;
-        mesh.position.x -= centerX;
-        mesh.position.z -= centerZ;
-        mesh.position.y -= box.min.y;
+    const idx = spawnedModels.indexOf(toDelete);
+    if (idx !== -1) {
+        spawnedModels.splice(idx, 1);
     }
-
-    wrapper.position.copy(placementPosition || reticle.position);
-
-    const euler = new THREE.Euler().setFromQuaternion(placementQuaternion || reticle.quaternion, 'YXZ');
-    wrapper.rotation.y = euler.y;
-
-    mesh.traverse((node) => {
-        if (node.isMesh) {
-            node.castShadow = true;
-            node.receiveShadow = true;
-        }
-    });
-
-    scene.add(wrapper);
-    const entry = { mesh: wrapper, price: modelData.price, glbUrl: modelData.glbUrl };
-    spawnedModels.push(entry);
-
-    if (spawnedModels.length === 1) {
-        hintEl.classList.remove('show-hint');
-        hintEl.style.display = 'none';
-    }
-
-    selectPlacedModel(entry);
     updateBudget();
-}
+});
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+    setSelectedPlacedModel(null);
+    spawnedModels.forEach((entry) => {
+        scene.remove(entry.mesh);
+        disposeMeshHierarchy(entry.mesh);
+    });
+    spawnedModels.length = 0;
+    updateBudget();
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. FIREBASE CATALOG INTEGRATION
+// 6. FIREBASE REALTIME CATALOG INTEGRATION
 // ─────────────────────────────────────────────────────────────────────────────
 
 const firebaseConfig = {
@@ -597,7 +591,7 @@ async function resolveUrl(pathOrUrl, folder) {
 }
 
 function selectCatalogModel(card, assetData) {
-    document.querySelectorAll('.catalog-item').forEach(el => el.classList.remove('selected'));
+    document.querySelectorAll('.catalog-item').forEach((el) => el.classList.remove('selected'));
     card.classList.add('selected');
     selectedModelData = assetData;
 
@@ -664,10 +658,10 @@ function initCatalogSync() {
                 const d = doc.data();
                 if (!d.glb) return;
                 registry[category].push({
-                    title: d.title ?? 'Unnamed',
+                    title: d.title ?? 'Unnamed Asset',
                     glbName: d.glb,
                     imgName: d.img ?? null,
-                    price: d.price ?? 349.00
+                    price: d.price ?? 349.00,
                 });
             });
             if (category === activeCategory) renderCatalog(activeCategory);
