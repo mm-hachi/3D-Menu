@@ -23,9 +23,12 @@ body {
     height: 100%;
     z-index: 1;
     display: block;
+    /* Let our own touch handlers own gestures (drag-to-move, pinch-to-rotate)
+       instead of letting the browser intercept them as scroll/zoom. */
+    touch-action: none;
 }
 
-/* --- Parentheses Reticle --- */
+/* --- Parentheses Reticle (CSS, always screen-center) --- */
 #reticle {
     position: fixed;
     top: 50%;
@@ -59,6 +62,7 @@ body {
     border-radius: 0 10px 10px 0;
 }
 
+/* Flash white on placement */
 #reticle.flash .reticle-paren {
     border-color: #ffffff;
 }
@@ -70,10 +74,12 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
+    /* Pass touches through to canvas by default for 3D selection & hit testing */
     pointer-events: none;
     z-index: 100;
 }
 
+/* Interactive overlay elements capture pointer events */
 #hud-top,
 #action-bar,
 #catalog-drawer {
@@ -205,7 +211,7 @@ body {
     opacity: 1 !important;
 }
 
-/* --- Floating Action Toolbar --- */
+/* --- Floating Action Toolbar (Place & Delete Buttons) --- */
 #action-bar {
     position: absolute;
     bottom: 30px;
@@ -305,24 +311,25 @@ body {
 }
 
 .icon-close-btn {
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(52, 199, 89, 0.9);
+    border: none;
     color: #ffffff;
-    padding: 6px 14px;
-    border-radius: 16px;
-    font-size: 0.8rem;
-    font-weight: 600;
+    height: 28px;
+    padding: 0 14px;
+    border-radius: 14px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-family: 'Inter', sans-serif;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background 0.2s, color 0.2s, transform 0.15s;
+    transition: background 0.2s, transform 0.2s;
 }
 
 .icon-close-btn:active {
-    background: rgba(255, 255, 255, 0.25);
-    transform: scale(0.95);
-    color: #ffffff;
+    background: rgba(40, 167, 69, 1);
+    transform: scale(0.94);
 }
 
 #category-tabs {
