@@ -1,595 +1,485 @@
-// ============================================================
-// AR Retail Staging App
-// ------------------------------------------------------------
-// Single ES module bootstrapping the 8th Wall Open-Source XR session,
-// initializing Firebase, pulling furniture items, and rendering
-// GLB assets in AR.
-// ============================================================
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-const THREE = window.THREE;
+// 8th Wall's XR8.Threejs.pipelineModule() looks for window.THREE.
+// ES module imports are scoped and don't auto-expose globals, so we
+// must attach it manually before the XR8 pipeline is initialized.
+window.THREE = THREE;
 
-if (!THREE) {
-    throw new Error('Three.js must be loaded before ar_staging.js.');
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. STATE & LOADERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+let scene, camera, renderer;
+let reticle;
+let selectionBoxHelper;
+
+const spawnedModels = []; // [{ mesh, price, glbUrl }]
+let selectedModelData = null; // Catalog asset data: { glbUrl, price }
+let selectedPlacedEntry = null; // Placed 3D object: { mesh, price, glbUrl }
+
+// Enable Three.js network cache
+THREE.Cache.enabled = true;
+
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+dracoLoader.preload();
+
+const gltfLoader = new GLTFLoader();
+gltfLoader.setDRACOLoader(dracoLoader);
+
+const modelCache = {};
+
+// Background preload queue for instant placement
+const PRELOAD_CONCURRENCY = 2;
+let activePreloads = 0;
+const preloadQueue = [];
+
+function preloadModel(glbUrl, { priority = false } = {}) {
+    if (!glbUrl || modelCache[glbUrl]) return modelCache[glbUrl];
+
+    const promise = new Promise((resolve, reject) => {
+        const job = () => {
+            activePreloads++;
+            gltfLoader.load(
+                glbUrl,
+                (gltf) => {
+                    activePreloads--;
+                    resolve(gltf.scene);
+                    pumpPreloadQueue();
+                },
+                undefined,
+                (err) => {
+                    activePreloads--;
+                    console.error('[preloadModel] Load error:', err);
+                    delete modelCache[glbUrl];
+                    reject(err);
+                    pumpPreloadQueue();
+                }
+            );
+        };
+
+        if (priority) {
+            preloadQueue.unshift(job);
+        } else {
+            preloadQueue.push(job);
+        }
+    });
+
+    modelCache[glbUrl] = promise;
+    pumpPreloadQueue();
+    return promise;
 }
 
-// ------------------------------------------------------------
-// DOM references
-// ------------------------------------------------------------
-const dom = {
-    exitBtn: document.getElementById('exitBtn'),
-    catalogueBtn: document.getElementById('catalogueBtn'),
-    cataloguePanel: document.getElementById('cataloguePanel'),
-    closeCatalogue: document.getElementById('closeCatalogue'),
-    catalogueList: document.getElementById('catalogueList'),
-    scanOverlay: document.getElementById('scanOverlay'),
-    loadingScreen: document.getElementById('loadingScreen'),
-    permissionOverlay: document.getElementById('permissionOverlay'),
-    startARBtn: document.getElementById('startARBtn'),
-    placeModelBtn: document.getElementById('placeModelBtn'),
-    toast: document.getElementById('toast'),
-    placementIndicator: document.getElementById('placementIndicator'),
-    canvas: document.getElementById('xr-canvas')
+function pumpPreloadQueue() {
+    while (activePreloads < PRELOAD_CONCURRENCY && preloadQueue.length > 0) {
+        const job = preloadQueue.shift();
+        job();
+    }
+}
+
+// CSS Reticle — positioned in DOM, always pixel-perfect at screen center
+const cssReticle = document.getElementById('reticle');
+let hasHitSurface = false; // tracks first surface detection to show reticle
+
+// Raycasting for Model Selection
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. PLACED MODEL SELECTION & HIGHLIGHTING
+// ─────────────────────────────────────────────────────────────────────────────
+
+function selectPlacedModel(entry) {
+    selectedPlacedEntry = entry;
+    const deleteBtn = document.getElementById('delete-selected-btn');
+
+    if (entry) {
+        selectionBoxHelper.setFromObject(entry.mesh);
+        selectionBoxHelper.visible = true;
+        deleteBtn.style.display = 'inline-flex';
+    } else {
+        selectionBoxHelper.visible = false;
+        deleteBtn.style.display = 'none';
+    }
+}
+
+function handleCanvasTap(clientX, clientY) {
+    if (!camera || !scene) return;
+
+    pointer.x = (clientX / window.innerWidth) * 2 - 1;
+    pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(pointer, camera);
+
+    const targetMeshes = spawnedModels.map(item => item.mesh);
+    const intersects = raycaster.intersectObjects(targetMeshes, true);
+
+    if (intersects.length > 0) {
+        let topObj = intersects[0].object;
+        while (topObj.parent && topObj.parent !== scene) {
+            topObj = topObj.parent;
+        }
+
+        const matchedEntry = spawnedModels.find(e => e.mesh === topObj);
+        if (matchedEntry) {
+            selectPlacedModel(matchedEntry);
+            return;
+        }
+    }
+
+    // Tapped open space -> deselect placed model
+    selectPlacedModel(null);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. 8TH WALL PIPELINE LOGIC (SLAM ENGINE)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const arStagingPipelineModule = () => {
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    return {
+        name: 'ar-staging-logic',
+        onStart: ({ canvas }) => {
+            const { scene: xrScene, camera: xrCamera, renderer: xrRenderer } = XR8.Threejs.xrScene();
+            scene = xrScene;
+            camera = xrCamera;
+            renderer = xrRenderer;
+
+            if (renderer && renderer.setPixelRatio) {
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            }
+
+            // Scene Lighting
+            const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.5);
+            light.position.set(0.5, 1, 0.25);
+            scene.add(light);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            dirLight.position.set(1, 4, 2);
+            scene.add(dirLight);
+
+            // We use a CSS reticle (always screen-center) instead of a 3D mesh.
+            // A hidden THREE.Object3D acts as the placement anchor for hit test results.
+            reticle = new THREE.Object3D();
+            scene.add(reticle);
+
+            // Add selection box helper for highlighting 3D models
+            selectionBoxHelper = new THREE.BoxHelper(new THREE.Mesh(), 0x007aff);
+            selectionBoxHelper.visible = false;
+            scene.add(selectionBoxHelper);
+
+            // Pointer/Touch Listeners for selection & tap-to-place
+            canvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    touchStartX = e.touches[0].clientX;
+                    touchStartY = e.touches[0].clientY;
+                }
+            }, { passive: true });
+
+            canvas.addEventListener('touchend', (e) => {
+                if (e.changedTouches.length === 1) {
+                    const endX = e.changedTouches[0].clientX;
+                    const endY = e.changedTouches[0].clientY;
+
+                    // Only count as a tap if touch didn't drag significantly
+                    if (Math.hypot(endX - touchStartX, endY - touchStartY) < 10) {
+                        handleCanvasTap(endX, endY);
+                    }
+                }
+            });
+
+            canvas.addEventListener('click', (e) => {
+                // Desktop / Mouse fallback
+                handleCanvasTap(e.clientX, e.clientY);
+            });
+        },
+        onUpdate: () => {
+            if (!scene) return;
+
+            // Perform hit test straight out from viewport center (0.5, 0.5)
+            const hitTestResults = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
+
+            if (hitTestResults && hitTestResults.length > 0) {
+                const hit = hitTestResults[0];
+
+                // Update invisible anchor so placement uses the correct world position
+                const p = hit.position;
+                const r = hit.rotation;
+                reticle.position.set(p.x, p.y, p.z);
+                reticle.quaternion.set(r.x, r.y, r.z, r.w);
+
+                // Show CSS reticle on first surface lock
+                if (!hasHitSurface) {
+                    hasHitSurface = true;
+                    cssReticle.style.display = 'flex';
+                }
+            } else {
+                // Dim but keep visible so it doesn't flash in/out constantly
+                cssReticle.style.opacity = hasHitSurface ? '0.35' : '0';
+            }
+
+            // Keep selection bounding box aligned with selected object
+            if (selectedPlacedEntry && selectionBoxHelper.visible) {
+                selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
+            }
+        }
+    };
 };
 
-// ------------------------------------------------------------
-// App state
-// ------------------------------------------------------------
-const state = {
-    initialized: false,
-    xrReady: false,
-    selectedCatalogItem: null,
-    modelCache: new Map(),
-    placedModels: [],
-    rotation: 0,
-    planeY: 0,
-    currentGhost: null,
-    floorPlane: new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
-    raycaster: new THREE.Raycaster(),
-    worldPointer: new THREE.Vector2(0, 0),
-    lastHitPoint: new THREE.Vector3(),
-    camera: null,
-    scene: null,
-    renderer: null,
-    firebaseApp: null,
-    firestore: null,
-    storage: null,
-    storageRef: null,
-    firebaseReady: false,
-    catalogueItems: [],
-    catalogueGroups: []
+const onxrloaded = () => {
+    XR8.addCameraPipelineModules([
+        XR8.GlTextureRenderer.pipelineModule(),       // Camera feed renderer
+        XR8.Threejs.pipelineModule(),                 // Three.js sync
+        XR8.XrController.pipelineModule(),            // SLAM tracking engine
+        window.XRExtras.AlmostThere.pipelineModule(), // Loading UI
+        window.XRExtras.FullWindowCanvas.pipelineModule(),
+        window.XRExtras.Loading.pipelineModule(),
+        window.XRExtras.RuntimeError.pipelineModule(),
+        arStagingPipelineModule(),                    // App Logic
+    ]);
+
+    XR8.run({ canvas: document.getElementById('camera-canvas') });
 };
 
-// ------------------------------------------------------------
-// Firebase configuration
-// ------------------------------------------------------------
+if (window.XR8) {
+    onxrloaded();
+} else {
+    window.addEventListener('xrloaded', onxrloaded);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. UI CONTROLS & DYNAMIC BUTTON HANDLERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function updateBudget() {
+    const total = spawnedModels.reduce((sum, item) => sum + (item.price || 0), 0);
+    document.getElementById('budget-value').textContent = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Hamburger Drawer Toggle
+const catalogDrawer = document.getElementById('catalog-drawer');
+const hamburgerBtn = document.getElementById('hamburger-btn');
+const closeDrawerBtn = document.getElementById('close-drawer-btn');
+
+function toggleDrawer(open) {
+    if (open === undefined) {
+        catalogDrawer.classList.toggle('collapsed');
+    } else if (open) {
+        catalogDrawer.classList.remove('collapsed');
+    } else {
+        catalogDrawer.classList.add('collapsed');
+    }
+}
+
+hamburgerBtn.addEventListener('click', () => toggleDrawer());
+closeDrawerBtn.addEventListener('click', () => toggleDrawer(false));
+
+// Clear All Models
+document.getElementById('clear-btn').addEventListener('click', () => {
+    selectPlacedModel(null);
+    spawnedModels.forEach(entry => scene.remove(entry.mesh));
+    spawnedModels.length = 0;
+    updateBudget();
+});
+
+// Dynamic Delete Button Action
+document.getElementById('delete-selected-btn').addEventListener('click', () => {
+    if (!selectedPlacedEntry) return;
+
+    const entryToDelete = selectedPlacedEntry;
+    selectPlacedModel(null);
+
+    scene.remove(entryToDelete.mesh);
+    entryToDelete.mesh.traverse((node) => {
+        if (node.isMesh) {
+            node.geometry?.dispose();
+            const mats = Array.isArray(node.material) ? node.material : [node.material];
+            mats.forEach(m => m?.dispose());
+        }
+    });
+
+    const idx = spawnedModels.indexOf(entryToDelete);
+    if (idx !== -1) {
+        spawnedModels.splice(idx, 1);
+    }
+    updateBudget();
+});
+
+// Dynamic Place Button Action
+const placeBtn = document.getElementById('place-btn');
+placeBtn.addEventListener('click', () => {
+    if (selectedModelData) {
+        spawnModelAtReticle(selectedModelData);
+    }
+});
+
+function spawnModelAtReticle(modelData) {
+    const glbUrl = modelData.glbUrl;
+
+    // Flash the CSS reticle white as placement feedback
+    cssReticle.classList.add('flash');
+    setTimeout(() => cssReticle.classList.remove('flash'), 200);
+
+    // Snapshot the anchor's world position at the moment of the tap
+    const placementPosition = reticle.position.clone();
+    const placementQuaternion = reticle.quaternion.clone();
+
+    const templatePromise = modelCache[glbUrl] || preloadModel(glbUrl, { priority: true });
+
+    templatePromise
+        .then((template) => addMeshToScene(template.clone(), modelData, placementPosition, placementQuaternion))
+        .catch((err) => console.error('[spawnModel] Load error:', err));
+}
+
+function addMeshToScene(mesh, modelData, placementPosition, placementQuaternion) {
+    mesh.position.copy(placementPosition || reticle.position);
+
+    // Extract only Y rotation so model stays upright on the floor plane
+    const euler = new THREE.Euler().setFromQuaternion(placementQuaternion || reticle.quaternion, 'YXZ');
+    mesh.rotation.y = euler.y;
+
+    scene.add(mesh);
+    const entry = { mesh, price: modelData.price, glbUrl: modelData.glbUrl };
+    spawnedModels.push(entry);
+
+    // Hide the placement hint permanently after first model is placed
+    if (spawnedModels.length === 1) {
+        const hint = document.getElementById('placement-hint');
+        hint.classList.remove('show-hint');
+        hint.style.display = 'none';
+    }
+
+    // Automatically select newly placed model
+    selectPlacedModel(entry);
+    updateBudget();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. FIREBASE CATALOG INTEGRATION
+// ─────────────────────────────────────────────────────────────────────────────
+
 const firebaseConfig = {
     apiKey: 'AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY',
     authDomain: 'shot47-database.firebaseapp.com',
     projectId: 'shot47-database',
     storageBucket: 'shot47-database.firebasestorage.app',
     messagingSenderId: '77237094269',
-    appId: '1:77237094269:web:a90a6c6239cb66e3102e14'
+    appId: '1:77237094269:web:a90a6c6239cb66e3102e14',
 };
 
-// ------------------------------------------------------------
-// Helper: Request Permissions
-// ------------------------------------------------------------
-async function requestPermissions() {
-    // 1. Request Camera Permission
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: 'environment' } }
-            });
-            // Stop temporary stream so 8th Wall / XR engine can capture the camera
-            stream.getTracks().forEach(track => track.stop());
-        } catch (err) {
-            throw new Error('Camera permission was denied or camera is unavailable.');
-        }
-    }
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+const storage = getStorage(firebaseApp);
 
-    // 2. Request iOS Motion Sensor Permission
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        try {
-            const response = await DeviceOrientationEvent.requestPermission();
-            if (response !== 'granted') {
-                throw new Error('Motion sensor permission was denied.');
-            }
-        } catch (err) {
-            throw new Error('Motion sensor permission error: ' + err.message);
-        }
-    }
+const registry = { furniture: [], carpets: [], decor: [] };
+let activeCategory = 'furniture';
+
+const collectionMap = {
+    furniture: 'furniture_models',
+    carpets: 'carpet_models',
+    decor: 'decor_models',
+};
+
+async function resolveUrl(pathOrUrl, folder) {
+    if (!pathOrUrl) return null;
+    if (pathOrUrl.startsWith('http')) return pathOrUrl;
+    return getDownloadURL(ref(storage, `${folder}/${pathOrUrl}`));
 }
 
-// ------------------------------------------------------------
-// Loader helpers
-// ------------------------------------------------------------
-function waitForXR8(timeoutMs = 12000) {
-    return new Promise((resolve, reject) => {
-        if (window.XR8) {
-            resolve(window.XR8);
-            return;
-        }
+function selectCatalogModel(card, assetData) {
+    document.querySelectorAll('.catalog-item').forEach(el => el.classList.remove('selected'));
+    card.classList.add('selected');
+    selectedModelData = assetData;
 
-        const timer = setTimeout(() => {
-            reject(new Error('Timed out waiting for 8th Wall XR engine to load from CDN.'));
-        }, timeoutMs);
-
-        const onXRLoaded = () => {
-            clearTimeout(timer);
-            resolve(window.XR8);
-        };
-
-        window.addEventListener('xrloaded', onXRLoaded, { once: true });
-
-        const src = 'https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js';
-        let script = document.querySelector(`script[src="${src}"]`);
-
-        if (!script) {
-            script = document.createElement('script');
-            script.src = src;
-            script.async = true;
-            script.crossOrigin = 'anonymous';
-            script.setAttribute('data-preload-chunks', 'slam');
-            script.onerror = () => {
-                clearTimeout(timer);
-                window.removeEventListener('xrloaded', onXRLoaded);
-                reject(new Error('Failed to load 8th Wall script from CDN (Network/CORS error).'));
-            };
-            document.head.appendChild(script);
-        } else {
-            script.addEventListener('error', () => {
-                clearTimeout(timer);
-                window.removeEventListener('xrloaded', onXRLoaded);
-                reject(new Error('Failed to load 8th Wall script from CDN (Network/CORS error).'));
-            }, { once: true });
-        }
-    });
+    // Show place button & placement guidance hint
+    placeBtn.style.display = 'inline-flex';
+    document.getElementById('placement-hint').classList.add('show-hint');
 }
 
-async function importGLTFLoader() {
-    const moduleUrl = 'https://unpkg.com/three@0.180.0/examples/jsm/loaders/GLTFLoader.js';
-    const { GLTFLoader } = await import(moduleUrl);
-    return GLTFLoader;
-}
+function renderCatalog(category) {
+    const list = document.getElementById('catalog-list');
+    list.innerHTML = '';
+    const assets = registry[category] ?? [];
 
-async function initializeFirebase() {
-    if (state.firebaseReady) {
+    if (assets.length === 0) {
+        list.innerHTML = '<div class="empty-notice">Updating digital catalog…</div>';
         return;
     }
 
-    const firebaseAppModule = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js');
-    const firestoreModule = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js');
-    const storageModule = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js');
+    assets.forEach((asset) => {
+        const card = document.createElement('div');
+        card.className = 'catalog-item state-loading';
+        card.innerHTML = `
+            <div class="thumb-wrapper"><img class="catalog-thumb" alt="${asset.title}" /></div>
+            <div class="card-meta"><span>${asset.title}</span></div>
+        `;
+        list.appendChild(card);
 
-    state.firebaseApp = firebaseAppModule.initializeApp(firebaseConfig);
-    state.firestore = firestoreModule;
-    state.storage = storageModule;
-    state.storageRef = storageModule.getStorage(state.firebaseApp);
-    state.firebaseReady = true;
-}
-
-// ------------------------------------------------------------
-// UI helpers
-// ------------------------------------------------------------
-function showToast(message) {
-    dom.toast.textContent = message;
-    dom.toast.classList.add('show');
-
-    clearTimeout(showToast._timer);
-    showToast._timer = setTimeout(() => {
-        dom.toast.classList.remove('show');
-    }, 2500);
-}
-
-function setLoading(visible) {
-    dom.loadingScreen.style.display = visible ? 'flex' : 'none';
-}
-
-function setScanOverlay(visible) {
-    dom.scanOverlay.classList.toggle('hidden', !visible);
-}
-
-function openCatalogue() {
-    dom.cataloguePanel.classList.add('open');
-}
-
-function closeCatalogue() {
-    dom.cataloguePanel.classList.remove('open');
-}
-
-function renderCatalogue(groups) {
-    dom.catalogueList.innerHTML = '';
-
-    for (const group of groups) {
-        const section = document.createElement('section');
-        section.className = 'catalogueGroup';
-
-        const heading = document.createElement('h3');
-        heading.textContent = group.label;
-        heading.style.marginBottom = '12px';
-        heading.style.marginTop = '8px';
-        heading.style.fontSize = '15px';
-        heading.style.textTransform = 'uppercase';
-        heading.style.letterSpacing = '0.04em';
-        heading.style.color = '#555';
-
-        section.appendChild(heading);
-
-        for (const item of group.items) {
-            const card = document.createElement('article');
-            card.className = 'modelCard';
-            card.dataset.id = item.id;
-
-            const image = document.createElement('img');
-            image.className = 'modelThumb';
-            image.alt = item.name;
-            image.src = item.thumbnailUrl || '';
-
-            const info = document.createElement('div');
-            info.className = 'modelInfo';
-
-            const title = document.createElement('h3');
-            title.textContent = item.name;
-
-            const description = document.createElement('p');
-            description.textContent = item.description || 'Tap to place this furniture in the room.';
-
-            info.append(title, description);
-            card.append(image, info);
-
-            card.addEventListener('click', () => {
-                state.selectedCatalogItem = item;
-                [...dom.catalogueList.querySelectorAll('.modelCard')].forEach(child => child.classList.remove('selected'));
-                card.classList.add('selected');
-                dom.placeModelBtn.classList.add('show');
-                previewGhost(item);
-            });
-
-            section.appendChild(card);
+        const img = card.querySelector('.catalog-thumb');
+        if (asset.imgName) {
+            resolveUrl(asset.imgName, 'models/thumbnails')
+                .then((url) => { img.src = url; })
+                .catch(() => { });
         }
 
-        dom.catalogueList.appendChild(section);
-    }
-}
+        resolveUrl(asset.glbName, 'models/glb')
+            .then((glbUrl) => {
+                card.classList.remove('state-loading');
+                const assetData = { glbUrl, price: asset.price };
+                const isFirstCard = list.children[0] === card;
 
-// ------------------------------------------------------------
-// Firebase catalog loading
-// ------------------------------------------------------------
-async function fetchCatalogue() {
-    await initializeFirebase();
+                preloadModel(glbUrl, { priority: isFirstCard });
 
-    const categories = [
-        { folder: 'furniture_models', label: 'Furniture' },
-        { folder: 'carpet_models', label: 'Carpet' },
-        { folder: 'decor_models', label: 'Decor' }
-    ];
+                card.addEventListener('click', () => {
+                    selectCatalogModel(card, assetData);
+                    preloadModel(glbUrl, { priority: true });
+                });
 
-    const groups = [];
-
-    for (const category of categories) {
-        try {
-            const folderRef = state.storage.ref(state.storageRef, category.folder);
-            const results = await state.storage.listAll(folderRef);
-
-            const items = await Promise.all(results.items.map(async (itemRef) => {
-                const isModelFile = /\.(glb|gltf)$/i.test(itemRef.name);
-                if (!isModelFile) {
-                    return null;
+                if (!selectedModelData && isFirstCard) {
+                    selectCatalogModel(card, assetData);
                 }
-
-                const modelUrl = await state.storage.getDownloadURL(itemRef);
-                const thumbnailName = itemRef.name.replace(/\.(glb|gltf)$/i, '.png');
-                let thumbnailUrl = '';
-
-                try {
-                    const thumbRef = state.storage.ref(state.storageRef, `${category.folder}/${thumbnailName}`);
-                    thumbnailUrl = await state.storage.getDownloadURL(thumbRef);
-                } catch (error) {
-                    thumbnailUrl = '';
-                }
-
-                return {
-                    id: itemRef.fullPath,
-                    category: category.folder,
-                    name: itemRef.name.replace(/\.(glb|gltf)$/i, '').replace(/[_-]+/g, ' '),
-                    description: `${category.label} model`,
-                    modelUrl,
-                    thumbnailUrl
-                };
-            }));
-
-            const validItems = items.filter(Boolean);
-            groups.push({ label: category.label, items: validItems });
-        } catch (catErr) {
-            console.warn(`Category ${category.label} could not be loaded:`, catErr);
-        }
-    }
-
-    state.catalogueGroups = groups;
-    state.catalogueItems = groups.flatMap(group => group.items);
-    renderCatalogue(groups);
-    showToast(`${state.catalogueItems.length} model items loaded`);
-}
-
-// ------------------------------------------------------------
-// GLB preview and placement
-// ------------------------------------------------------------
-async function loadModelAsset(modelUrl) {
-    if (state.modelCache.has(modelUrl)) {
-        return state.modelCache.get(modelUrl);
-    }
-
-    const GLTFLoader = await importGLTFLoader();
-    const loader = new GLTFLoader();
-    const gltf = await loader.loadAsync(modelUrl);
-    state.modelCache.set(modelUrl, gltf);
-    return gltf;
-}
-
-function scaleModelToFit(group) {
-    const box = new THREE.Box3().setFromObject(group);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const maxSize = Math.max(size.x, size.y, size.z) || 1;
-    const target = 0.5;
-    const scale = target / maxSize;
-    group.scale.setScalar(scale);
-
-    const center = new THREE.Vector3();
-    box.getCenter(center);
-    group.position.sub(center);
-    group.position.y = 0;
-
-    return group;
-}
-
-async function previewGhost(item) {
-    if (!state.scene) {
-        return;
-    }
-
-    setScanOverlay(false);
-    showToast(`Previewing ${item.name}`);
-
-    if (state.currentGhost && state.currentGhost.parent) {
-        state.currentGhost.parent.remove(state.currentGhost);
-    }
-
-    const gltf = await loadModelAsset(item.modelUrl);
-    const ghost = scaleModelToFit(gltf.scene.clone());
-
-    ghost.traverse((child) => {
-        if (child.isMesh) {
-            child.material = child.material.clone();
-            child.material.transparent = true;
-            child.material.opacity = 0.72;
-        }
-    });
-
-    ghost.rotation.set(0, state.rotation, 0);
-    state.currentGhost = ghost;
-    state.scene.add(ghost);
-    updateGhostPosition(state.lastHitPoint || new THREE.Vector3(0, 0, 0));
-}
-
-function updateGhostPosition(hitPoint) {
-    if (!state.currentGhost) {
-        return;
-    }
-
-    state.currentGhost.position.copy(hitPoint);
-    state.currentGhost.position.y = state.planeY;
-    state.currentGhost.rotation.y = state.rotation;
-    dom.placementIndicator.style.display = 'block';
-}
-
-function resetGhost() {
-    if (state.currentGhost && state.currentGhost.parent) {
-        state.currentGhost.parent.remove(state.currentGhost);
-    }
-
-    state.currentGhost = null;
-    dom.placeModelBtn.classList.remove('show');
-    dom.placementIndicator.style.display = 'none';
-}
-
-function placeSelectedModel() {
-    if (!state.selectedCatalogItem || !state.currentGhost) {
-        showToast('Choose an item to preview first.');
-        return;
-    }
-
-    const placed = state.currentGhost.clone(true);
-    placed.position.copy(state.currentGhost.position);
-    placed.rotation.copy(state.currentGhost.rotation);
-    placed.userData = { catalogId: state.selectedCatalogItem.id };
-
-    placed.traverse((child) => {
-        if (child.isMesh && child.material) {
-            child.material = child.material.clone();
-            child.material.transparent = false;
-            child.material.opacity = 1;
-        }
-    });
-
-    state.scene.add(placed);
-    state.placedModels.push(placed);
-    showToast(`${state.selectedCatalogItem.name} placed`);
-
-    previewGhost(state.selectedCatalogItem);
-}
-
-// ------------------------------------------------------------
-// 8th Wall Open Source Engine bootstrap
-// ------------------------------------------------------------
-async function bootstrapEightWall() {
-    const xr8 = await waitForXR8();
-
-    if (xr8.loadChunk) {
-        await xr8.loadChunk('slam');
-    }
-
-    xr8.addCameraPipelineModule({
-        name: 'ar-retail-staging',
-        onStart: () => {
-            state.xrReady = true;
-            showToast('AR system ready');
-        },
-        onUpdate: () => {
-            if (!state.scene || !state.camera) {
-                return;
-            }
-
-            const hit = computePlaneHit();
-            if (hit) {
-                state.lastHitPoint.copy(hit);
-                state.lastHitPoint.y = state.planeY;
-                updateGhostPosition(state.lastHitPoint);
-                setScanOverlay(false);
-            } else {
-                setScanOverlay(true);
-            }
-        }
-    });
-
-    xr8.run({
-        canvas: dom.canvas,
-        onCreate: ({ scene, camera, renderer }) => {
-            state.scene = scene;
-            state.camera = camera;
-            state.renderer = renderer;
-            state.scene.background = null;
-            dom.placementIndicator.style.display = 'none';
-        }
+            })
+            .catch(() => {
+                card.classList.remove('state-loading');
+                card.style.opacity = '0.3';
+            });
     });
 }
 
-function computePlaneHit() {
-    if (!state.camera || !state.scene) {
-        return null;
-    }
-
-    state.worldPointer.set(0, 0);
-    state.raycaster.setFromCamera(state.worldPointer, state.camera);
-    const hitPoint = new THREE.Vector3();
-    const hit = state.raycaster.ray.intersectPlane(state.floorPlane, hitPoint);
-
-    if (!hit) {
-        return null;
-    }
-
-    return hitPoint;
+function initCatalogSync() {
+    Object.entries(collectionMap).forEach(([category, collectionName]) => {
+        onSnapshot(collection(db, collectionName), (snapshot) => {
+            registry[category] = [];
+            snapshot.forEach((doc) => {
+                const d = doc.data();
+                if (!d.glb) return;
+                registry[category].push({
+                    title: d.title ?? 'Unnamed',
+                    glbName: d.glb,
+                    imgName: d.img ?? null,
+                    price: d.price ?? 349.00
+                });
+            });
+            if (category === activeCategory) renderCatalog(activeCategory);
+        });
+    });
 }
 
-// ------------------------------------------------------------
-// Gesture handling
-// ------------------------------------------------------------
-let gestureStartAngle = null;
-let gestureStartRotation = 0;
-const activePointerIds = new Map();
-
-window.addEventListener('pointerdown', (event) => {
-    activePointerIds.set(event.pointerId, { x: event.clientX, y: event.clientY });
-
-    if (activePointerIds.size === 1) {
-        gestureStartAngle = null;
-    }
+document.querySelectorAll('.tab-btn').forEach((tab) => {
+    tab.addEventListener('click', (e) => {
+        document.querySelectorAll('.tab-btn').forEach((t) => t.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        activeCategory = e.currentTarget.dataset.category;
+        renderCatalog(activeCategory);
+    });
 });
 
-window.addEventListener('pointermove', (event) => {
-    if (!activePointerIds.has(event.pointerId) || !state.currentGhost) {
-        return;
-    }
-
-    const current = activePointerIds.get(event.pointerId);
-    current.x = event.clientX;
-    current.y = event.clientY;
-
-    if (activePointerIds.size >= 2) {
-        const points = [...activePointerIds.values()];
-        const angle = Math.atan2(points[1].y - points[0].y, points[1].x - points[0].x);
-
-        if (gestureStartAngle === null) {
-            gestureStartAngle = angle;
-            gestureStartRotation = state.rotation;
-        } else {
-            const delta = angle - gestureStartAngle;
-            state.rotation = gestureStartRotation + delta;
-            state.currentGhost.rotation.y = state.rotation;
-        }
-    }
-});
-
-window.addEventListener('pointerup', (event) => {
-    activePointerIds.delete(event.pointerId);
-    gestureStartAngle = null;
-});
-
-window.addEventListener('wheel', (event) => {
-    if (!state.currentGhost) {
-        return;
-    }
-
-    state.rotation += event.deltaY * 0.003;
-    state.currentGhost.rotation.y = state.rotation;
-}, { passive: true });
-
-// ------------------------------------------------------------
-// UI event wiring
-// ------------------------------------------------------------
-dom.catalogueBtn.addEventListener('click', openCatalogue);
-dom.closeCatalogue.addEventListener('click', closeCatalogue);
-
-dom.exitBtn.addEventListener('click', () => {
-    resetGhost();
-    showToast('AR session closed');
-});
-
-dom.placeModelBtn.addEventListener('click', () => {
-    placeSelectedModel();
-});
-
-dom.startARBtn.addEventListener('click', async () => {
-    try {
-        // 1. Explicitly request permissions on user tap
-        await requestPermissions();
-
-        // 2. Hide permission overlay & show loader
-        dom.permissionOverlay.style.display = 'none';
-        setLoading(true);
-
-        // 3. Initialize open-source 8th Wall XR engine
-        await bootstrapEightWall();
-
-        // 4. Fetch models from Firebase Storage
-        try {
-            await fetchCatalogue();
-        } catch (catErr) {
-            console.warn('Catalogue fetch failed:', catErr);
-        }
-
-        setLoading(false);
-        setScanOverlay(true);
-        state.initialized = true;
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'AR initialization failed.';
-        console.error('AR Startup Error:', message, error);
-        setLoading(false);
-        dom.permissionOverlay.style.display = 'flex';
-        showToast(message);
-    }
-});
-
-// ------------------------------------------------------------
-// Kickoff
-// ------------------------------------------------------------
-(async function init() {
-    setLoading(false);
-    try {
-        await initializeFirebase();
-        console.info('Firebase initialized:', state.firebaseApp.name);
-    } catch (error) {
-        console.warn('Firebase config issue:', error);
-    }
-})();
+initCatalogSync();

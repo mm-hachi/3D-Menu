@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>47 XLVII | 8th Wall AR Sandbox</title>
+    <title>Shot 47 XLVII | 8th Wall AR Sandbox</title>
 
     <!-- 8th Wall SLAM Engine & Extras (open source engine binary, no app key required) -->
     <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js" async crossorigin="anonymous"
@@ -19,9 +19,8 @@
     <!-- 8th Wall renders the camera feed and 3D scene directly to this canvas -->
     <canvas id="camera-canvas"></canvas>
 
-    <!-- CSS Reticle — always pixel-perfect at viewport center. Gray while
-         scanning, turns green (.locked) once a real surface is found. -->
-    <div id="reticle">
+    <!-- CSS Reticle — always pixel-perfect at viewport center -->
+    <div id="reticle" style="display:none;">
         <div class="reticle-paren reticle-left"></div>
         <div class="reticle-paren reticle-right"></div>
     </div>
@@ -35,7 +34,7 @@
                     <span class="btn-icon">←</span> Exit
                 </a>
                 <button id="hamburger-btn" class="glass-btn icon-text-btn" title="Toggle Spatial Catalog">
-                    <span class="btn-icon">☰</span> Catalog
+                    <span class="btn-icon">☰</span> Menu
                 </button>
             </div>
 
@@ -72,7 +71,7 @@
                     <span class="drawer-title">Spatial Catalog</span>
                     <span class="drawer-subtitle">Select an asset to stage</span>
                 </div>
-                <button id="close-drawer-btn" class="icon-close-btn" title="Place">Place</button>
+                <button id="close-drawer-btn" class="icon-close-btn" title="Close Catalog">✕</button>
             </div>
             <div id="category-tabs">
                 <button class="tab-btn active" data-category="furniture">Furniture</button>
