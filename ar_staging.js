@@ -168,38 +168,32 @@ function classifyPlaneOrientation(rotation) {
     const q = _reusableQuat.set(rotation.x, rotation.y, rotation.z, rotation.w);
     _upVec.set(0, 1, 0).applyQuaternion(q);
     const alignment = Math.abs(_upVec.dot(_worldUp));
-    if (alignment > 0.8) return 'horizontal';
-    if (alignment < 0.35) return 'vertical';
-    return 'angled';
+
+    // Strict thresholds for a flat floor
+    if (alignment > 0.85) return 'horizontal';
+    return 'non-horizontal';
 }
 
 function pickBestHit(hitTestResults) {
-    // 1. Check for Plane Hits first
+    // 1. Check for estimated surface planes first
     const planeHits = hitTestResults?.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE') ?? [];
-
     if (planeHits.length > 0) {
-        const horizontal = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
-        if (horizontal) return horizontal;
-
-        const vertical = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'vertical');
-        if (vertical) return vertical;
-
+        const horizontalHit = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
+        if (horizontalHit) return horizontalHit;
         return planeHits[0];
     }
 
-    // 2. Fallback to Feature Points if no planes are found
+    // 2. Fallback to Feature Points if no full surface plane is found yet
     const featureHits = hitTestResults?.filter((h) => h.type === 'FEATURE_POINT') ?? [];
-
     if (featureHits.length > 0) {
         const hit = featureHits[0];
-        // Feature points have position but no orientation; assume a flat floor.
         if (!hit.rotation) {
             hit.rotation = { x: 0, y: 0, z: 0, w: 1 };
         }
         return hit;
     }
 
-    // 3. Return null only if nothing was found
+    // 3. Return null if nothing valid is found
     return null;
 }
 
@@ -214,7 +208,6 @@ const arStagingPipelineModule = () => {
     return {
         name: 'ar-staging-logic',
         onStart: ({ canvas }) => {
-            // FIX: Defensive check in case the open-source binary fails to init.
             if (!XR8.Threejs || !XR8.Threejs.xrScene) {
                 console.error('8th Wall Three.js pipeline not available.');
                 hintEl.textContent = 'AR initialization failed. Please reload.';
@@ -231,7 +224,6 @@ const arStagingPipelineModule = () => {
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
             }
 
-            // FIX: Enable shadows for realistic grounding.
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -268,8 +260,6 @@ const arStagingPipelineModule = () => {
             selectionBoxHelper.visible = false;
             scene.add(selectionBoxHelper);
 
-            // FIX: Add an invisible shadow-catching plane just below the reticle
-            // to give placed models a "contact shadow" on flat surfaces.
             const shadowPlane = new THREE.Mesh(
                 new THREE.PlaneGeometry(20, 20),
                 new THREE.ShadowMaterial({ opacity: 0.25 })
@@ -444,7 +434,6 @@ function toggleDrawer(open) {
 hamburgerBtn.addEventListener('click', () => toggleDrawer());
 closeDrawerBtn.addEventListener('click', () => toggleDrawer(false));
 
-// FIX: Dispose geometries/materials on clear to prevent GPU memory leaks.
 document.getElementById('clear-btn').addEventListener('click', () => {
     selectPlacedModel(null);
     spawnedModels.forEach(entry => {
@@ -462,7 +451,6 @@ document.getElementById('delete-selected-btn').addEventListener('click', () => {
     selectPlacedModel(null);
 
     scene.remove(entryToDelete.mesh);
-    // FIX: Safe to dispose because we deep-clone on spawn (see deepCloneModel).
     disposeHierarchy(entryToDelete.mesh);
 
     const idx = spawnedModels.indexOf(entryToDelete);
@@ -478,9 +466,6 @@ placeBtn.addEventListener('click', () => {
     }
 });
 
-// FIX: Deep-clone a loaded model so each placed instance owns its own
-// geometry/materials. Without this, deleting one instance disposes the
-// shared geometry and breaks every other identical model in the scene.
 function deepCloneModel(source) {
     const clone = source.clone(true);
     clone.traverse((node) => {
@@ -519,7 +504,6 @@ function spawnModelAtReticle(modelData) {
 
     templatePromise
         .then((template) => {
-            // FIX: Deep clone so each placement is an independent GPU object.
             const modelRoot = deepCloneModel(template);
             addMeshToScene(modelRoot, modelData, placementPosition, placementQuaternion);
         })
@@ -530,12 +514,15 @@ function addMeshToScene(mesh, modelData, placementPosition, placementQuaternion)
     const wrapper = new THREE.Group();
     wrapper.add(mesh);
 
+    wrapper.updateMatrixWorld(true);
+    mesh.updateMatrixWorld(true);
+
     const box = new THREE.Box3().setFromObject(mesh);
 
-    // FIX: Use Box3.isEmpty() instead of isFinite() for a robust pivot check.
     if (!box.isEmpty()) {
         const centerX = (box.min.x + box.max.x) / 2;
         const centerZ = (box.min.z + box.max.z) / 2;
+
         mesh.position.x -= centerX;
         mesh.position.z -= centerZ;
         mesh.position.y -= box.min.y;
@@ -543,10 +530,10 @@ function addMeshToScene(mesh, modelData, placementPosition, placementQuaternion)
 
     wrapper.position.copy(placementPosition || reticle.position);
 
-    const euler = new THREE.Euler().setFromQuaternion(placementQuaternion || reticle.quaternion, 'YXZ');
-    wrapper.rotation.y = euler.y;
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldDirection(cameraDirection);
+    wrapper.rotation.y = Math.atan2(-cameraDirection.x, -cameraDirection.z);
 
-    // FIX: Enable shadows on the model so it casts onto the shadow plane.
     mesh.traverse((node) => {
         if (node.isMesh) {
             node.castShadow = true;
