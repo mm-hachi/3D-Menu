@@ -1,377 +1,532 @@
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+// ============================================================
+// AR Retail Staging App
+// ------------------------------------------------------------
+// This single ES module bootstraps the 8th Wall XR session,
+// initializes Firebase, pulls furniture items from Firestore + Storage,
+// and lets the user preview and place multiple GLB assets on a
+// detected floor plane while rotating them around the vertical axis.
+// ============================================================
 
-// Expose THREE globally for 8th Wall's pipeline
-window.THREE = THREE;
+const THREE = window.THREE;
 
-// 1. FIREBASE INITIALIZATION 
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
-import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js';
+if (!THREE) {
+    throw new Error('Three.js must be loaded before ar_staging.js.');
+}
 
+// ------------------------------------------------------------
+// DOM references
+// ------------------------------------------------------------
+const dom = {
+    exitBtn: document.getElementById('exitBtn'),
+    catalogueBtn: document.getElementById('catalogueBtn'),
+    cataloguePanel: document.getElementById('cataloguePanel'),
+    closeCatalogue: document.getElementById('closeCatalogue'),
+    catalogueList: document.getElementById('catalogueList'),
+    scanOverlay: document.getElementById('scanOverlay'),
+    loadingScreen: document.getElementById('loadingScreen'),
+    permissionOverlay: document.getElementById('permissionOverlay'),
+    startARBtn: document.getElementById('startARBtn'),
+    placeModelBtn: document.getElementById('placeModelBtn'),
+    toast: document.getElementById('toast'),
+    placementIndicator: document.getElementById('placementIndicator'),
+    canvas: document.getElementById('xr-canvas')
+};
+
+// ------------------------------------------------------------
+// App state
+// ------------------------------------------------------------
+const state = {
+    initialized: false,
+    xrReady: false,
+    selectedCatalogItem: null,
+    modelCache: new Map(),
+    placedModels: [],
+    rotation: 0,
+    planeY: 0,
+    currentGhost: null,
+    floorPlane: new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+    raycaster: new THREE.Raycaster(),
+    worldPointer: new THREE.Vector2(0, 0),
+    lastHitPoint: new THREE.Vector3(),
+    camera: null,
+    scene: null,
+    renderer: null,
+    firebaseApp: null,
+    firestore: null,
+    storage: null,
+    storageRef: null,
+    firebaseReady: false,
+    catalogueItems: [],
+    catalogueGroups: []
+};
+
+// ------------------------------------------------------------
+// Firebase configuration
+// ------------------------------------------------------------
 const firebaseConfig = {
     apiKey: 'AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY',
     authDomain: 'shot47-database.firebaseapp.com',
     projectId: 'shot47-database',
     storageBucket: 'shot47-database.firebasestorage.app',
     messagingSenderId: '77237094269',
-    appId: '1:77237094269:web:a90a6c6239cb66e3102e14',
+    appId: '1:77237094269:web:a90a6c6239cb66e3102e14'
 };
 
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp);
-const storage = getStorage(firebaseApp);
+// ------------------------------------------------------------
+// Loader helpers
+// ------------------------------------------------------------
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const existing = document.querySelector(`script[src="${src}"]`);
 
-// 2. STATE & CACHE MANAGEMENT
-let scene, camera, renderer;
-let reticle3D, shadowPlane, selectionBox;
-const spawnedModels = [];
-let activeCatalogAsset = null;
-let selectedSceneModel = null;
-let isGroundLocked = false;
+        if (existing) {
+            existing.addEventListener('load', resolve, { once: true });
+            existing.addEventListener('error', reject, { once: true });
+            return;
+        }
 
-// Caching system for instant multi-placement
-const modelCache = new Map();
-const dracoLoader = new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
-const gltfLoader = new GLTFLoader().setDRACOLoader(dracoLoader);
-
-// 3. UI DOM ELEMENTS
-const domReticle = document.getElementById('reticle');
-const hintEl = document.getElementById('placement-hint');
-const placeBtn = document.getElementById('place-btn');
-const deleteBtn = document.getElementById('delete-selected-btn');
-const budgetValue = document.getElementById('budget-value');
-const drawer = document.getElementById('catalog-drawer');
-
-// 4. CATALOG REGISTRY & FIRESTORE SYNC
-const registry = { furniture: [], carpets: [], decor: [] };
-let activeCategory = 'furniture';
-
-const collectionMap = {
-    furniture: 'furniture_models',
-    carpets: 'carpet_models',
-    decor: 'decor_models',
-};
-
-async function resolveUrl(pathOrUrl, folder) {
-    if (!pathOrUrl) return null;
-    if (pathOrUrl.startsWith('http')) return pathOrUrl;
-    return getDownloadURL(ref(storage, `${folder}/${pathOrUrl}`));
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
 }
 
-function selectCatalogModel(card, assetData) {
-    document.querySelectorAll('.catalog-item').forEach(el => el.classList.remove('selected'));
-    card.classList.add('selected');
-    activeCatalogAsset = assetData;
-
-    if (isGroundLocked) {
-        placeBtn.style.display = 'inline-flex';
-    }
-    hintEl.classList.add('show-hint');
+async function importGLTFLoader() {
+    const moduleUrl = 'https://unpkg.com/three@0.180.0/examples/jsm/loaders/GLTFLoader.js';
+    const { GLTFLoader } = await import(moduleUrl);
+    return GLTFLoader;
 }
 
-function renderCatalog(category) {
-    const list = document.getElementById('catalog-list');
-    if (!list) return;
-    list.innerHTML = '';
-    const assets = registry[category] ?? [];
-
-    if (assets.length === 0) {
-        list.innerHTML = '<div class="empty-notice">Updating digital catalog…</div>';
+async function initializeFirebase() {
+    if (state.firebaseReady) {
         return;
     }
 
-    assets.forEach((asset) => {
-        const card = document.createElement('div');
-        card.className = 'catalog-item state-loading';
-        card.innerHTML = `
-            <div class="thumb-wrapper"><img class="catalog-thumb" alt="${asset.title}" /></div>
-            <div class="card-meta"><span>${asset.title}</span></div>
-        `;
-        list.appendChild(card);
+    const firebaseAppModule = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js');
+    const firestoreModule = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js');
+    const storageModule = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js');
 
-        const img = card.querySelector('.catalog-thumb');
-        if (asset.imgName) {
-            resolveUrl(asset.imgName, 'models/thumbnails')
-                .then((url) => { img.src = url; })
-                .catch(() => { });
+    state.firebaseApp = firebaseAppModule.initializeApp(firebaseConfig);
+    state.firestore = firestoreModule;
+    state.storage = storageModule;
+    state.storageRef = storageModule.getStorage(state.firebaseApp);
+    state.firebaseReady = true;
+}
+
+// ------------------------------------------------------------
+// UI helpers
+// ------------------------------------------------------------
+function showToast(message) {
+    dom.toast.textContent = message;
+    dom.toast.classList.add('show');
+
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(() => {
+        dom.toast.classList.remove('show');
+    }, 2500);
+}
+
+function setLoading(visible) {
+    dom.loadingScreen.style.display = visible ? 'flex' : 'none';
+}
+
+function setScanOverlay(visible) {
+    dom.scanOverlay.classList.toggle('hidden', !visible);
+}
+
+function openCatalogue() {
+    dom.cataloguePanel.classList.add('open');
+}
+
+function closeCatalogue() {
+    dom.cataloguePanel.classList.remove('open');
+}
+
+function renderCatalogue(groups) {
+    dom.catalogueList.innerHTML = '';
+
+    for (const group of groups) {
+        const section = document.createElement('section');
+        section.className = 'catalogueGroup';
+
+        const heading = document.createElement('h3');
+        heading.textContent = group.label;
+        heading.style.marginBottom = '12px';
+        heading.style.marginTop = '8px';
+        heading.style.fontSize = '15px';
+        heading.style.textTransform = 'uppercase';
+        heading.style.letterSpacing = '0.04em';
+        heading.style.color = '#555';
+
+        section.appendChild(heading);
+
+        for (const item of group.items) {
+            const card = document.createElement('article');
+            card.className = 'modelCard';
+            card.dataset.id = item.id;
+
+            const image = document.createElement('img');
+            image.className = 'modelThumb';
+            image.alt = item.name;
+            image.src = item.thumbnailUrl || '';
+
+            const info = document.createElement('div');
+            info.className = 'modelInfo';
+
+            const title = document.createElement('h3');
+            title.textContent = item.name;
+
+            const description = document.createElement('p');
+            description.textContent = item.description || 'Tap to place this furniture in the room.';
+
+            info.append(title, description);
+            card.append(image, info);
+
+            card.addEventListener('click', () => {
+                state.selectedCatalogItem = item;
+                [...dom.catalogueList.querySelectorAll('.modelCard')].forEach(child => child.classList.remove('selected'));
+                card.classList.add('selected');
+                dom.placeModelBtn.classList.add('show');
+                previewGhost(item);
+            });
+
+            section.appendChild(card);
         }
 
-        resolveUrl(asset.glbName, 'models/glb')
-            .then((glbUrl) => {
-                card.classList.remove('state-loading');
-                const assetData = { glbUrl, price: asset.price };
-                const isFirstCard = list.children[0] === card;
-
-                preloadAsset(glbUrl);
-
-                card.addEventListener('click', () => {
-                    selectCatalogModel(card, assetData);
-                    preloadAsset(glbUrl);
-                });
-
-                if (!activeCatalogAsset && isFirstCard) {
-                    selectCatalogModel(card, assetData);
-                }
-            })
-            .catch(() => {
-                card.classList.remove('state-loading');
-                card.style.opacity = '0.3';
-            });
-    });
+        dom.catalogueList.appendChild(section);
+    }
 }
 
-function initCatalogSync() {
-    Object.entries(collectionMap).forEach(([category, collectionName]) => {
-        onSnapshot(collection(db, collectionName), (snapshot) => {
-            registry[category] = [];
-            snapshot.forEach((doc) => {
-                const d = doc.data();
-                if (!d.glb) return;
-                registry[category].push({
-                    title: d.title ?? 'Unnamed',
-                    glbName: d.glb,
-                    imgName: d.img ?? null,
-                    price: d.price ?? 349.00
-                });
-            });
-            if (category === activeCategory) renderCatalog(activeCategory);
-        });
-    });
+// ------------------------------------------------------------
+// Firebase catalog loading
+// ------------------------------------------------------------
+async function fetchCatalogue() {
+    await initializeFirebase();
+
+    const categories = [
+        { folder: 'furniture_models', label: 'Furniture' },
+        { folder: 'carpet_models', label: 'Carpet' },
+        { folder: 'decor_models', label: 'Decor' }
+    ];
+
+    const groups = [];
+
+    for (const category of categories) {
+        const folderRef = state.storage.ref(state.storageRef, category.folder);
+        const results = await state.storage.listAll(folderRef);
+
+        const items = await Promise.all(results.items.map(async (itemRef) => {
+            const isModelFile = /\.(glb|gltf)$/i.test(itemRef.name);
+            if (!isModelFile) {
+                return null;
+            }
+
+            const modelUrl = await state.storage.getDownloadURL(itemRef);
+            const thumbnailName = itemRef.name.replace(/\.(glb|gltf)$/i, '.png');
+            let thumbnailUrl = '';
+
+            try {
+                const thumbRef = state.storage.ref(state.storageRef, `${category.folder}/${thumbnailName}`);
+                thumbnailUrl = await state.storage.getDownloadURL(thumbRef);
+            } catch (error) {
+                thumbnailUrl = '';
+            }
+
+            return {
+                id: itemRef.fullPath,
+                category: category.folder,
+                name: itemRef.name.replace(/\.(glb|gltf)$/i, '').replace(/[_-]+/g, ' '),
+                description: `${category.label} model`,
+                modelUrl,
+                thumbnailUrl
+            };
+        }));
+
+        const validItems = items.filter(Boolean);
+        groups.push({ label: category.label, items: validItems });
+    }
+
+    state.catalogueGroups = groups;
+    state.catalogueItems = groups.flatMap(group => group.items);
+    renderCatalogue(groups);
+    showToast(`${state.catalogueItems.length} model items loaded`);
 }
 
-document.querySelectorAll('.tab-btn').forEach((tab) => {
-    tab.addEventListener('click', (e) => {
-        document.querySelectorAll('.tab-btn').forEach((t) => t.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-        activeCategory = e.currentTarget.dataset.category;
-        renderCatalog(activeCategory);
-    });
-});
+// ------------------------------------------------------------
+// GLB preview and placement
+// ------------------------------------------------------------
+async function loadModelAsset(modelUrl) {
+    if (state.modelCache.has(modelUrl)) {
+        return state.modelCache.get(modelUrl);
+    }
 
-initCatalogSync();
-
-// 5. STRICT GROUND DETECTION
-function isRealGroundPlane(hitRotation) {
-    if (!hitRotation) return false;
-    const quaternion = new THREE.Quaternion(hitRotation.x, hitRotation.y, hitRotation.z, hitRotation.w);
-    const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion);
-    return Math.abs(upVector.dot(new THREE.Vector3(0, 1, 0))) > 0.85;
+    const GLTFLoader = await importGLTFLoader();
+    const loader = new GLTFLoader();
+    const gltf = await loader.loadAsync(modelUrl);
+    state.modelCache.set(modelUrl, gltf);
+    return gltf;
 }
 
-// 6. 8TH WALL AR PIPELINE MODULE
-const spatialStagingPipeline = () => {
-    let touchStartX, touchStartY;
-    const raycaster = new THREE.Raycaster();
-    const tapVector = new THREE.Vector2();
+function scaleModelToFit(group) {
+    const box = new THREE.Box3().setFromObject(group);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxSize = Math.max(size.x, size.y, size.z) || 1;
+    const target = 0.5;
+    const scale = target / maxSize;
+    group.scale.setScalar(scale);
 
-    return {
-        name: 'xlvii-spatial-staging',
-        onStart: ({ canvas }) => {
-            const { scene: xrScene, camera: xrCamera, renderer: xrRenderer } = XR8.Threejs.xrScene();
-            scene = xrScene;
-            camera = xrCamera;
-            renderer = xrRenderer;
+    // Normalize the model to the floor plane so it appears grounded.
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    group.position.sub(center);
+    group.position.y = 0;
 
-            const ambientLight = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.2);
-            scene.add(ambientLight);
+    return group;
+}
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-            directionalLight.position.set(5, 10, 7);
-            directionalLight.castShadow = true;
-            directionalLight.shadow.mapSize.set(1024, 1024);
-            scene.add(directionalLight);
+async function previewGhost(item) {
+    if (!state.scene) {
+        return;
+    }
 
-            shadowPlane = new THREE.Mesh(
-                new THREE.PlaneGeometry(50, 50),
-                new THREE.ShadowMaterial({ opacity: 0.4 })
-            );
-            shadowPlane.rotation.x = -Math.PI / 2;
-            shadowPlane.receiveShadow = true;
-            scene.add(shadowPlane);
+    setScanOverlay(false);
+    showToast(`Previewing ${item.name}`);
 
-            reticle3D = new THREE.Object3D();
-            scene.add(reticle3D);
+    if (state.currentGhost && state.currentGhost.parent) {
+        state.currentGhost.parent.remove(state.currentGhost);
+    }
 
-            selectionBox = new THREE.BoxHelper(new THREE.Mesh(), 0x34c759);
-            selectionBox.visible = false;
-            scene.add(selectionBox);
+    const gltf = await loadModelAsset(item.modelUrl);
+    const ghost = scaleModelToFit(gltf.scene.clone());
 
-            canvas.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 1) {
-                    touchStartX = e.touches[0].clientX;
-                    touchStartY = e.touches[0].clientY;
-                }
-            });
+    ghost.traverse((child) => {
+        if (child.isMesh) {
+            child.material = child.material.clone();
+            child.material.transparent = true;
+            child.material.opacity = 0.72;
+        }
+    });
 
-            canvas.addEventListener('touchend', (e) => {
-                if (e.changedTouches.length !== 1) return;
-                const dist = Math.hypot(e.changedTouches[0].clientX - touchStartX, e.changedTouches[0].clientY - touchStartY);
+    ghost.rotation.set(0, state.rotation, 0);
+    state.currentGhost = ghost;
+    state.scene.add(ghost);
+    updateGhostPosition(state.lastHitPoint || new THREE.Vector3(0, 0, 0));
+}
 
-                if (dist < 10) {
-                    tapVector.x = (e.changedTouches[0].clientX / window.innerWidth) * 2 - 1;
-                    tapVector.y = -(e.changedTouches[0].clientY / window.innerHeight) * 2 + 1;
-                    raycaster.setFromCamera(tapVector, camera);
+function updateGhostPosition(hitPoint) {
+    if (!state.currentGhost) {
+        return;
+    }
 
-                    const intersects = raycaster.intersectObjects(spawnedModels.map(m => m.mesh), true);
-                    if (intersects.length > 0) {
-                        let object = intersects[0].object;
-                        while (object.parent && object.parent !== scene) {
-                            object = object.parent;
-                        }
-                        selectModelInScene(spawnedModels.find(m => m.mesh === object));
-                    } else {
-                        selectModelInScene(null);
-                    }
-                }
-            });
+    state.currentGhost.position.copy(hitPoint);
+    state.currentGhost.position.y = state.planeY;
+    state.currentGhost.rotation.y = state.rotation;
+    dom.placementIndicator.style.display = 'block';
+}
+
+function resetGhost() {
+    if (state.currentGhost && state.currentGhost.parent) {
+        state.currentGhost.parent.remove(state.currentGhost);
+    }
+
+    state.currentGhost = null;
+    dom.placeModelBtn.classList.remove('show');
+    dom.placementIndicator.style.display = 'none';
+}
+
+function placeSelectedModel() {
+    if (!state.selectedCatalogItem || !state.currentGhost) {
+        showToast('Choose an item to preview first.');
+        return;
+    }
+
+    const placed = state.currentGhost.clone(true);
+    placed.position.copy(state.currentGhost.position);
+    placed.rotation.copy(state.currentGhost.rotation);
+    placed.userData = { catalogId: state.selectedCatalogItem.id };
+
+    placed.traverse((child) => {
+        if (child.isMesh && child.material) {
+            child.material = child.material.clone();
+            child.material.transparent = false;
+            child.material.opacity = 1;
+        }
+    });
+
+    state.scene.add(placed);
+    state.placedModels.push(placed);
+    showToast(`${state.selectedCatalogItem.name} placed`);
+
+    // Keep the ghost mounted for another placement by re-previewing the same item.
+    previewGhost(state.selectedCatalogItem);
+}
+
+// ------------------------------------------------------------
+// 8th Wall XR bootstrap
+// ------------------------------------------------------------
+async function bootstrapEightWall() {
+    if (!window.XR8) {
+        await loadScript('https://cdn.8thwall.com/xrweb/8thwall.xrextras.js');
+    }
+
+    if (!window.XR8) {
+        throw new Error('8th Wall XR8 could not be loaded.');
+    }
+
+    const xr8 = window.XR8;
+
+    xr8.addCameraPipelineModule({
+        name: 'ar-retail-staging',
+        onStart: () => {
+            state.xrReady = true;
+            showToast('AR system ready');
         },
-
         onUpdate: () => {
-            if (!scene || !XR8.XrController) return;
-
-            const hits = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE']);
-            let validGround = null;
-
-            for (const hit of hits) {
-                if (hit.type === 'ESTIMATED_SURFACE_PLANE' && isRealGroundPlane(hit.rotation)) {
-                    validGround = hit;
-                    break;
-                }
+            if (!state.scene || !state.camera) {
+                return;
             }
 
-            if (validGround) {
-                reticle3D.position.copy(validGround.position);
-                reticle3D.quaternion.copy(validGround.rotation);
-                shadowPlane.position.y = validGround.position.y;
-
-                if (!isGroundLocked) {
-                    isGroundLocked = true;
-                    domReticle?.classList.add('locked');
-                    if (activeCatalogAsset && placeBtn) placeBtn.style.display = 'inline-flex';
-                    if (hintEl) hintEl.textContent = "Surface detected. Tap to place.";
-                }
+            const hit = computePlaneHit();
+            if (hit) {
+                state.lastHitPoint.copy(hit);
+                state.lastHitPoint.y = state.planeY;
+                updateGhostPosition(state.lastHitPoint);
+                setScanOverlay(false);
             } else {
-                if (isGroundLocked) {
-                    isGroundLocked = false;
-                    domReticle?.classList.remove('locked');
-                    if (placeBtn) placeBtn.style.display = 'none';
-                    if (hintEl) hintEl.textContent = "Scanning for floor...";
-                }
-            }
-
-            if (selectedSceneModel && selectionBox.visible) {
-                selectionBox.setFromObject(selectedSceneModel.mesh);
+                setScanOverlay(true);
             }
         }
-    };
-};
+    });
 
-// Initialize 8th Wall
-const initAR = () => {
-    XR8.addCameraPipelineModules([
-        XR8.GlTextureRenderer.pipelineModule(),
-        XR8.Threejs.pipelineModule(),
-        XR8.XrController.pipelineModule(),
-        window.XRExtras.AlmostThere.pipelineModule(),
-        window.XRExtras.FullWindowCanvas.pipelineModule(),
-        window.XRExtras.Loading.pipelineModule(),
-        spatialStagingPipeline(),
-    ]);
-    XR8.run({ canvas: document.getElementById('camera-canvas') });
-};
-
-if (window.XR8) {
-    initAR();
-} else {
-    window.addEventListener('xrloaded', initAR);
-}
-
-// 7. ASSET PLACEMENT & MEMORY MANAGEMENT
-function preloadAsset(glbUrl) {
-    if (!glbUrl || modelCache.has(glbUrl)) return;
-    gltfLoader.load(glbUrl, (gltf) => {
-        modelCache.set(glbUrl, gltf.scene);
+    xr8.run({
+        canvas: dom.canvas,
+        onCreate: ({ scene, camera, renderer }) => {
+            state.scene = scene;
+            state.camera = camera;
+            state.renderer = renderer;
+            state.scene.background = null;
+            dom.placementIndicator.style.display = 'none';
+        }
     });
 }
 
-function spawnAsset() {
-    if (!isGroundLocked || !activeCatalogAsset) return;
+function computePlaneHit() {
+    if (!state.camera || !state.scene) {
+        return null;
+    }
 
-    domReticle?.classList.add('flash');
-    setTimeout(() => domReticle?.classList.remove('flash'), 150);
+    state.worldPointer.set(0, 0);
+    state.raycaster.setFromCamera(state.worldPointer, state.camera);
+    const hitPoint = new THREE.Vector3();
+    const hit = state.raycaster.ray.intersectPlane(state.floorPlane, hitPoint);
 
-    const template = modelCache.get(activeCatalogAsset.glbUrl);
-    if (!template) {
-        console.warn("Asset still loading into memory...");
+    if (!hit) {
+        return null;
+    }
+
+    return hitPoint;
+}
+
+// ------------------------------------------------------------
+// Gesture handling
+// ------------------------------------------------------------
+let gestureStartAngle = null;
+let gestureStartRotation = 0;
+const activePointerIds = new Map();
+
+window.addEventListener('pointerdown', (event) => {
+    activePointerIds.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (activePointerIds.size === 1) {
+        gestureStartAngle = null;
+    }
+});
+
+window.addEventListener('pointermove', (event) => {
+    if (!activePointerIds.has(event.pointerId) || !state.currentGhost) {
         return;
     }
 
-    const clone = template.clone(true);
-    const box = new THREE.Box3().setFromObject(clone);
-    const center = box.getCenter(new THREE.Vector3());
-    clone.position.set(-center.x, -box.min.y, -center.z);
+    const current = activePointerIds.get(event.pointerId);
+    current.x = event.clientX;
+    current.y = event.clientY;
 
-    const wrapper = new THREE.Group();
-    wrapper.add(clone);
-    wrapper.position.copy(reticle3D.position);
+    if (activePointerIds.size >= 2) {
+        const points = [...activePointerIds.values()];
+        const angle = Math.atan2(points[1].y - points[0].y, points[1].x - points[0].x);
 
-    const euler = new THREE.Euler().setFromQuaternion(reticle3D.quaternion, 'YXZ');
-    wrapper.rotation.y = euler.y;
-
-    wrapper.traverse((node) => {
-        if (node.isMesh) {
-            node.castShadow = true;
-            node.receiveShadow = true;
+        if (gestureStartAngle === null) {
+            gestureStartAngle = angle;
+            gestureStartRotation = state.rotation;
+        } else {
+            const delta = angle - gestureStartAngle;
+            state.rotation = gestureStartRotation + delta;
+            state.currentGhost.rotation.y = state.rotation;
         }
-    });
-
-    scene.add(wrapper);
-    spawnedModels.push({
-        mesh: wrapper,
-        price: activeCatalogAsset.price
-    });
-
-    updateTally();
-}
-
-// 8. INTERACTIVITY & DRAWER LOGIC
-placeBtn?.addEventListener('click', spawnAsset);
-
-function selectModelInScene(modelRecord) {
-    selectedSceneModel = modelRecord;
-    if (modelRecord) {
-        selectionBox.setFromObject(modelRecord.mesh);
-        selectionBox.visible = true;
-        if (deleteBtn) deleteBtn.style.display = 'inline-flex';
-    } else {
-        selectionBox.visible = false;
-        if (deleteBtn) deleteBtn.style.display = 'none';
     }
-}
-
-deleteBtn?.addEventListener('click', () => {
-    if (!selectedSceneModel) return;
-
-    scene.remove(selectedSceneModel.mesh);
-    spawnedModels.splice(spawnedModels.indexOf(selectedSceneModel), 1);
-
-    selectModelInScene(null);
-    updateTally();
 });
 
-document.getElementById('clear-btn')?.addEventListener('click', () => {
-    spawnedModels.forEach(m => scene.remove(m.mesh));
-    spawnedModels.length = 0;
-    selectModelInScene(null);
-    updateTally();
+window.addEventListener('pointerup', (event) => {
+    activePointerIds.delete(event.pointerId);
+    gestureStartAngle = null;
 });
 
-function updateTally() {
-    const total = spawnedModels.reduce((sum, item) => sum + (item.price || 0), 0);
-    if (budgetValue) budgetValue.textContent = `$${total.toFixed(2)}`;
-}
+window.addEventListener('wheel', (event) => {
+    if (!state.currentGhost) {
+        return;
+    }
 
-document.getElementById('hamburger-btn')?.addEventListener('click', () => drawer?.classList.remove('collapsed'));
-document.getElementById('close-drawer-btn')?.addEventListener('click', () => drawer?.classList.add('collapsed'));
+    state.rotation += event.deltaY * 0.003;
+    state.currentGhost.rotation.y = state.rotation;
+}, { passive: true });
+
+// ------------------------------------------------------------
+// UI event wiring
+// ------------------------------------------------------------
+dom.catalogueBtn.addEventListener('click', openCatalogue);
+dom.closeCatalogue.addEventListener('click', closeCatalogue);
+
+dom.exitBtn.addEventListener('click', () => {
+    resetGhost();
+    showToast('AR session closed');
+});
+
+dom.placeModelBtn.addEventListener('click', () => {
+    placeSelectedModel();
+});
+
+dom.startARBtn.addEventListener('click', async () => {
+    try {
+        dom.permissionOverlay.style.display = 'none';
+        setLoading(true);
+        await bootstrapEightWall();
+        await fetchCatalogue();
+        setLoading(false);
+        setScanOverlay(true);
+        state.initialized = true;
+    } catch (error) {
+        console.error(error);
+        setLoading(false);
+        showToast(error.message || 'AR could not start');
+    }
+});
+
+// ------------------------------------------------------------
+// Kickoff
+// ------------------------------------------------------------
+(async function init() {
+    setLoading(false);
+    setScanOverlay(true);
+
+    try {
+        await initializeFirebase();
+        console.info('Firebase initialized:', state.firebaseApp.name);
+    } catch (error) {
+        console.warn('Firebase config is missing or invalid:', error);
+        showToast('Add a valid Firebase config to window.__FIREBASE_CONFIG__.');
+    }
+})();

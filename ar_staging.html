@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width,
+                 initial-scale=1,
+                 maximum-scale=1,
+                 user-scalable=no,
+                 viewport-fit=cover">
+
+    <title>AR Furniture Staging</title>
+
+    <link rel="stylesheet" href="ar_staging.css">
+
+</head>
+
+<body>
+
+    <!-- ===================================================== -->
+    <!-- AR CANVAS -->
+    <!-- ===================================================== -->
+
+    <div id="ar-container">
+
+        <canvas id="xr-canvas"></canvas>
+
+    </div>
+
+
+    <!-- ===================================================== -->
+    <!-- TOP BAR -->
+    <!-- ===================================================== -->
+
+    <header id="topBar">
+
+        <button
+            id="exitBtn"
+            title="Exit">
+
+            ✕
+
+        </button>
+
+        <button
+            id="catalogueBtn"
+            title="Catalogue">
+
+            ☰ Catalogue
+
+        </button>
+
+    </header>
+
+
+    <!-- ===================================================== -->
+    <!-- CATALOGUE -->
+    <!-- ===================================================== -->
+
+    <aside id="cataloguePanel">
+
+        <div class="catalogue-header">
+
+            <h2>Furniture</h2>
+
+            <button id="closeCatalogue">
+
+                Place
+
+            </button>
+
+        </div>
+
+        <div id="catalogueList">
+
+            <!-- Firebase items appear here -->
+
+        </div>
+
+    </aside>
+
+
+    <!-- ===================================================== -->
+    <!-- SCAN OVERLAY -->
+    <!-- ===================================================== -->
+
+    <section id="scanOverlay">
+
+        <div class="scan-animation">
+
+            <div class="scan-ring"></div>
+
+            <div class="scan-phone">
+
+                📱
+
+            </div>
+
+        </div>
+
+        <h3>
+
+            Move your phone slowly
+
+        </h3>
+
+        <p>
+
+            Scan the floor until a surface is detected.
+
+        </p>
+
+    </section>
+
+
+    <!-- ===================================================== -->
+    <!-- GHOST PLACEMENT -->
+    <!-- ===================================================== -->
+
+    <div id="placementIndicator">
+
+        <div class="placementBox"></div>
+
+    </div>
+
+
+    <!-- ===================================================== -->
+    <!-- PLACE MODEL BUTTON -->
+    <!-- ===================================================== -->
+
+    <button id="placeModelBtn">
+
+        Place Model
+
+    </button>
+
+
+    <!-- ===================================================== -->
+    <!-- LOADING -->
+    <!-- ===================================================== -->
+
+    <section id="loadingScreen">
+
+        <div class="loader"></div>
+
+        <p>
+
+            Initializing AR...
+
+        </p>
+
+    </section>
+
+
+    <!-- ===================================================== -->
+    <!-- PERMISSION -->
+    <!-- ===================================================== -->
+
+    <section id="permissionOverlay">
+
+        <div class="permission-card">
+
+            <h2>
+
+                Camera Access Required
+
+            </h2>
+
+            <p>
+
+                This experience needs access to your camera and
+                motion sensors for world tracking.
+
+            </p>
+
+            <button id="startARBtn">
+
+                Start AR
+
+            </button>
+
+        </div>
+
+    </section>
+
+
+    <!-- ===================================================== -->
+    <!-- TOAST -->
+    <!-- ===================================================== -->
+
+    <div id="toast"></div>
+
+
+    <!-- ===================================================== -->
+    <!-- LIBRARIES -->
+    <!-- ===================================================== -->
+
+    <!-- Three.js -->
+
+    <script type="module">
+
+        import * as THREE from
+        'https://unpkg.com/three@0.180.0/build/three.module.js';
+
+        window.THREE = THREE;
+
+    </script>
+
+
+    <!-- Main App -->
+
+    <script
+        type="module"
+        src="ar_staging.js">
+
+    </script>
+
+</body>
+
+</html>

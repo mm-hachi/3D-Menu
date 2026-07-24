@@ -1,447 +1,664 @@
+/* ==========================================================
+   GLOBAL
+========================================================== */
+
 * {
-    box-sizing: border-box;
     margin: 0;
     padding: 0;
+    box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
 }
 
+html,
 body {
-    font-family: 'Inter', sans-serif;
-    background-color: #000;
-    color: #ffffff;
-    overflow: hidden;
-    width: 100vw;
-    height: 100vh;
-    height: 100dvh;
-}
 
-#camera-canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
     width: 100%;
     height: 100%;
-    z-index: 1;
-    display: block;
-    /* Let our own touch handlers own gestures (drag-to-move, pinch-to-rotate)
-       instead of letting the browser intercept them as scroll/zoom. */
+    overflow: hidden;
+
+    font-family:
+        Inter,
+        Helvetica,
+        Arial,
+        sans-serif;
+
+    background: #000;
+    color: #222;
+
     touch-action: none;
+
 }
 
-/* --- Parentheses Reticle (CSS, always screen-center) --- */
-#reticle {
+button {
+
+    font: inherit;
+    border: none;
+    cursor: pointer;
+
+}
+
+button:active {
+
+    transform: scale(.96);
+
+}
+
+/* ==========================================================
+   AR VIEW
+========================================================== */
+
+#ar-container {
+
     position: fixed;
-    top: 50%;
+    inset: 0;
+    overflow: hidden;
+    background: #000;
+
+}
+
+#xr-canvas {
+
+    width: 100%;
+    height: 100%;
+    display: block;
+
+}
+
+/* ==========================================================
+   TOP BAR
+========================================================== */
+
+#topBar {
+
+    position: fixed;
+
+    top: 20px;
+    left: 20px;
+    right: 20px;
+
+    display: flex;
+    justify-content: space-between;
+
+    z-index: 500;
+
+}
+
+#topBar button {
+
+    background: rgba(255, 255, 255, .82);
+
+    backdrop-filter: blur(18px);
+
+    color: #111;
+
+    padding: 14px 18px;
+
+    border-radius: 40px;
+
+    font-weight: 600;
+
+    box-shadow:
+
+        0 8px 24px rgba(0, 0, 0, .18);
+
+}
+
+#exitBtn {
+
+    width: 48px;
+    height: 48px;
+
+    padding: 0;
+
+    font-size: 18px;
+
+}
+
+/* ==========================================================
+   CATALOGUE
+========================================================== */
+
+#cataloguePanel {
+
+    position: fixed;
+
+    top: 0;
+    right: 0;
+
+    width: 330px;
+    max-width: 90vw;
+
+    height: 100%;
+
+    background:
+
+        rgba(248, 248, 248, .93);
+
+    backdrop-filter:
+
+        blur(30px);
+
+    transform: translateX(100%);
+
+    transition: .35s ease;
+
+    z-index: 700;
+
+    display: flex;
+    flex-direction: column;
+
+    box-shadow:
+
+        -10px 0 30px rgba(0, 0, 0, .15);
+
+}
+
+#cataloguePanel.open {
+
+    transform: translateX(0);
+
+}
+
+.catalogue-header {
+
+    padding: 28px;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    border-bottom:
+
+        1px solid rgba(0, 0, 0, .08);
+
+}
+
+.catalogue-header h2 {
+
+    font-size: 20px;
+    font-weight: 600;
+
+}
+
+#closeCatalogue {
+
+    background: #111;
+    color: #fff;
+
+    padding: 12px 20px;
+
+    border-radius: 999px;
+
+}
+
+#catalogueList {
+
+    flex: 1;
+
+    overflow: auto;
+
+    padding: 18px;
+
+}
+
+/* ==========================================================
+   MODEL CARD
+========================================================== */
+
+.modelCard {
+
+    background: white;
+
+    border-radius: 18px;
+
+    overflow: hidden;
+
+    margin-bottom: 18px;
+
+    cursor: pointer;
+
+    transition: .25s;
+
+    box-shadow:
+
+        0 5px 18px rgba(0, 0, 0, .08);
+
+}
+
+.modelCard:hover {
+
+    transform: translateY(-3px);
+
+}
+
+.modelCard.selected {
+
+    outline: 3px solid #111;
+
+}
+
+.modelThumb {
+
+    width: 100%;
+    height: 180px;
+
+    object-fit: cover;
+
+    background: #efefef;
+
+}
+
+.modelInfo {
+
+    padding: 16px;
+
+}
+
+.modelInfo h3 {
+
+    font-size: 16px;
+    margin-bottom: 4px;
+
+}
+
+.modelInfo p {
+
+    color: #666;
+    font-size: 14px;
+
+}
+
+/* ==========================================================
+   PLACE BUTTON
+========================================================== */
+
+#placeModelBtn {
+
+    position: fixed;
+
+    bottom: 34px;
+
     left: 50%;
-    transform: translate(-50%, -50%);
+
+    transform:
+
+        translateX(-50%);
+
+    display: none;
+
+    padding:
+
+        18px 38px;
+
+    background: #111;
+
+    color: white;
+
+    border-radius: 50px;
+
+    font-size: 17px;
+
+    font-weight: 600;
+
+    z-index: 600;
+
+    box-shadow:
+
+        0 10px 28px rgba(0, 0, 0, .25);
+
+}
+
+#placeModelBtn.show {
+
+    display: block;
+
+}
+
+/* ==========================================================
+   SCANNING
+========================================================== */
+
+#scanOverlay {
+
+    position: fixed;
+    inset: 0;
+
+    background:
+
+        rgba(255, 255, 255, .10);
+
+    backdrop-filter:
+
+        blur(4px);
+
+    z-index: 800;
+
+    display: flex;
+
+    flex-direction: column;
+
+    justify-content: center;
+
+    align-items: center;
+
+    text-align: center;
+
+    transition: .5s;
+
+}
+
+#scanOverlay.hidden {
+
+    opacity: 0;
+    pointer-events: none;
+
+}
+
+.scan-animation {
+
+    position: relative;
+
+    width: 220px;
+    height: 220px;
+
+}
+
+.scan-phone {
+
+    position: absolute;
+
+    left: 50%;
+    top: 50%;
+
+    transform:
+
+        translate(-50%, -50%);
+
+    font-size: 64px;
+
+}
+
+.scan-ring {
+
+    position: absolute;
+
+    width: 220px;
+    height: 220px;
+
+    border-radius: 50%;
+
+    border:
+
+        2px solid rgba(255, 255, 255, .75);
+
+    animation:
+
+        pulse 2s infinite;
+
+}
+
+@keyframes pulse {
+
+    0% {
+
+        transform: scale(.55);
+        opacity: 1;
+
+    }
+
+    100% {
+
+        transform: scale(1.2);
+        opacity: 0;
+
+    }
+
+}
+
+#scanOverlay h3 {
+
+    margin-top: 32px;
+    color: white;
+    font-size: 26px;
+
+}
+
+#scanOverlay p {
+
+    margin-top: 12px;
+
+    color: white;
+
+    opacity: .9;
+
+    max-width: 280px;
+
+}
+
+/* ==========================================================
+   PLACEMENT INDICATOR
+========================================================== */
+
+#placementIndicator {
+
+    position: fixed;
+
+    left: 50%;
+    top: 50%;
+
+    width: 1px;
+    height: 1px;
+
+    pointer-events: none;
+
+    z-index: 250;
+
+}
+
+.placementBox {
+
+    width: 85px;
+    height: 85px;
+
+    margin-left: -42px;
+    margin-top: -42px;
+
+    border:
+
+        2px solid rgba(180, 180, 180, .9);
+
+    background:
+
+        rgba(200, 200, 200, .15);
+
+    border-radius: 8px;
+
+}
+
+/* ==========================================================
+   LOADING
+========================================================== */
+
+#loadingScreen {
+
+    position: fixed;
+    inset: 0;
+
+    background: white;
+
+    z-index: 999;
+
+    display: flex;
+
+    justify-content: center;
+    align-items: center;
+
+    flex-direction: column;
+
+}
+
+.loader {
+
     width: 56px;
     height: 56px;
-    z-index: 50;
-    pointer-events: none;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
 
-.reticle-paren {
-    width: 18px;
-    height: 48px;
-    border: 3px solid #8e8e93;
-    opacity: 0.75;
-    filter: drop-shadow(0 0 6px rgba(142, 142, 147, 0.5));
-    transition: border-color 0.25s ease, opacity 0.25s ease, filter 0.25s ease;
-}
-
-.reticle-left {
-    border-right: none;
-    border-radius: 10px 0 0 10px;
-}
-
-.reticle-right {
-    border-left: none;
-    border-radius: 0 10px 10px 0;
-}
-
-/* Green once a real surface is confirmed */
-#reticle.locked .reticle-paren {
-    border-color: #34c759;
-    opacity: 0.92;
-    filter: drop-shadow(0 0 6px rgba(52, 199, 89, 0.7));
-}
-
-/* Flash white on placement — takes priority over the locked green state */
-#reticle.flash .reticle-paren {
-    border-color: #ffffff !important;
-}
-
-/* --- UI Overlay HUD --- */
-#ar-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    /* Pass touches through to canvas by default for 3D selection & hit testing */
-    pointer-events: none;
-    z-index: 100;
-}
-
-/* Interactive overlay elements capture pointer events */
-#hud-top,
-#action-bar,
-#catalog-drawer {
-    pointer-events: auto;
-}
-
-/* --- HUD Top Navigation Bar --- */
-#hud-top {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    padding: 16px 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-}
-
-.hud-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.glass-btn {
-    background: rgba(20, 20, 25, 0.65);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    color: #ffffff;
-    padding: 8px 14px;
-    border-radius: 20px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-    transition: transform 0.2s ease, background-color 0.2s ease;
-}
-
-.glass-btn:active {
-    transform: scale(0.94);
-    background: rgba(255, 255, 255, 0.2);
-}
-
-.btn-icon {
-    font-size: 1rem;
-    line-height: 1;
-}
-
-#budget-badge {
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 16px;
-    padding: 6px 14px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-}
-
-.budget-label {
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #8e8e93;
-}
-
-#budget-value {
-    font-size: 1.15rem;
-    font-weight: 700;
-    color: #34c759;
-    font-family: monospace;
-}
-
-.glass-icon-btn {
-    background: rgba(20, 20, 25, 0.65);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    width: 42px;
-    height: 42px;
     border-radius: 50%;
-    color: #ffffff;
-    font-size: 1.1rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-    transition: transform 0.2s ease, background 0.2s ease;
+
+    border:
+
+        4px solid #ddd;
+
+    border-top:
+
+        4px solid #111;
+
+    animation:
+
+        spin 1s linear infinite;
+
 }
 
-.glass-icon-btn:active {
-    transform: scale(0.92);
-    background: rgba(255, 59, 48, 0.6);
+@keyframes spin {
+
+    to {
+
+        transform: rotate(360deg);
+
+    }
+
 }
 
-/* --- Placement Guidance Tag --- */
-#placement-hint {
-    position: absolute;
-    top: 90px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #e5e5ea;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    white-space: nowrap;
+#loadingScreen p {
+
+    margin-top: 24px;
+
+    color: #444;
+
 }
 
-.show-hint {
-    opacity: 1 !important;
-}
+/* ==========================================================
+   PERMISSION
+========================================================== */
 
-/* --- Floating Action Toolbar (Place & Delete Buttons) --- */
-#action-bar {
-    position: absolute;
-    bottom: 30px;
-    left: 50%;
-    transform: translateX(-50%);
+#permissionOverlay {
+
+    position: fixed;
+    inset: 0;
+
+    background:
+
+        rgba(255, 255, 255, .95);
+
     display: flex;
-    gap: 12px;
-    z-index: 110;
-}
 
-.btn-action {
-    border: none;
-    padding: 12px 22px;
-    border-radius: 30px;
-    font-size: 0.9rem;
-    font-weight: 700;
-    font-family: 'Inter', sans-serif;
-    color: #ffffff;
-    cursor: pointer;
-    display: inline-flex;
+    justify-content: center;
     align-items: center;
-    gap: 8px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, opacity 0.2s ease;
+
+    z-index: 1000;
+
 }
 
-.btn-action:active {
-    transform: scale(0.95);
-}
+.permission-card {
 
-.btn-place {
-    background: linear-gradient(135deg, #34c759, #28a745);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-}
+    width: 88%;
+    max-width: 360px;
 
-.btn-place:active {
-    background: linear-gradient(135deg, #28a745, #218838);
-}
+    background: white;
 
-.btn-delete {
-    background: linear-gradient(135deg, #ff3b30, #d70015);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-.btn-delete:active {
-    background: linear-gradient(135deg, #d70015, #b3000f);
-}
-
-/* --- Toggleable Catalog Drawer --- */
-#catalog-drawer {
-    position: absolute;
-    bottom: 20px;
-    left: 50%;
-    transform: translate(-50%, 0);
-    width: calc(100% - 32px);
-    max-width: 480px;
-    background: rgba(18, 18, 22, 0.85);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 24px;
-    padding: 16px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease;
-    z-index: 120;
-}
 
-#catalog-drawer.collapsed {
-    transform: translate(-50%, 140%);
-    opacity: 0;
-    pointer-events: none;
-}
+    padding: 32px;
 
-.drawer-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.drawer-title-group {
-    display: flex;
-    flex-direction: column;
-}
-
-.drawer-title {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #ffffff;
-}
-
-.drawer-subtitle {
-    font-size: 0.7rem;
-    color: #8e8e93;
-}
-
-.icon-close-btn {
-    background: rgba(52, 199, 89, 0.9);
-    border: none;
-    color: #ffffff;
-    height: 28px;
-    padding: 0 14px;
-    border-radius: 14px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    font-family: 'Inter', sans-serif;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background 0.2s, transform 0.2s;
-}
-
-.icon-close-btn:active {
-    background: rgba(40, 167, 69, 1);
-    transform: scale(0.94);
-}
-
-#category-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
-    background: rgba(0, 0, 0, 0.35);
-    padding: 4px;
-    border-radius: 14px;
-}
-
-.tab-btn {
-    flex: 1;
-    background: transparent;
-    border: none;
-    color: #8e8e93;
-    font-size: 0.78rem;
-    font-weight: 600;
-    padding: 8px;
-    border-radius: 10px;
-    transition: all 0.2s ease;
-    cursor: pointer;
-}
-
-.tab-btn.active {
-    background: rgba(255, 255, 255, 0.18);
-    color: #ffffff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-}
-
-.horizontal-scroll {
-    display: flex;
-    gap: 12px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-}
-
-.horizontal-scroll::-webkit-scrollbar {
-    display: none;
-}
-
-.catalog-item {
-    min-width: 95px;
-    height: 95px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 2px solid transparent;
-    border-radius: 16px;
-    overflow: hidden;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    cursor: pointer;
-    transition: border-color 0.2s, transform 0.2s, background 0.2s;
-}
-
-.catalog-item.selected {
-    border-color: #34c759;
-    transform: translateY(-3px);
-    background: rgba(52, 199, 89, 0.15);
-}
-
-.thumb-wrapper {
-    width: 100%;
-    height: 65px;
-    background: rgba(0, 0, 0, 0.25);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.catalog-thumb {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-}
-
-.card-meta {
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.35);
-}
-
-.card-meta span {
-    font-size: 0.65rem;
-    font-weight: 600;
-    color: #e5e5ea;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    padding: 0 4px;
-}
-
-.state-loading {
-    opacity: 0.5;
-    pointer-events: none;
-}
-
-.empty-notice {
-    font-size: 0.8rem;
-    color: #8e8e93;
-    padding: 20px;
     text-align: center;
+
+    box-shadow:
+
+        0 18px 50px rgba(0, 0, 0, .15);
+
+}
+
+.permission-card h2 {
+
+    margin-bottom: 18px;
+
+}
+
+.permission-card p {
+
+    line-height: 1.6;
+
+    color: #666;
+
+}
+
+#startARBtn {
+
     width: 100%;
+
+    margin-top: 28px;
+
+    padding: 16px;
+
+    background: #111;
+
+    color: white;
+
+    border-radius: 999px;
+
+}
+
+/* ==========================================================
+   TOAST
+========================================================== */
+
+#toast {
+
+    position: fixed;
+
+    left: 50%;
+
+    bottom: 110px;
+
+    transform:
+
+        translateX(-50%);
+
+    background:
+
+        rgba(20, 20, 20, .92);
+
+    color: white;
+
+    padding:
+
+        14px 22px;
+
+    border-radius: 40px;
+
+    opacity: 0;
+
+    transition: .3s;
+
+    z-index: 950;
+
+}
+
+#toast.show {
+
+    opacity: 1;
+
+}
+
+/* ==========================================================
+   MOBILE
+========================================================== */
+
+@media (max-width:700px) {
+
+    #cataloguePanel {
+
+        width: 100%;
+
+    }
+
 }
