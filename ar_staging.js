@@ -95,8 +95,51 @@ const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. PLACED MODEL SELECTION & HIGHLIGHTING
+// 2. HIT-TESTING & PLACED MODEL MANIPULATION
 // ─────────────────────────────────────────────────────────────────────────────
+
+const _upVec = new THREE.Vector3();
+const _worldUp = new THREE.Vector3(0, 1, 0);
+const _reusableQuat = new THREE.Quaternion();
+
+function classifyPlaneOrientation(rotation) {
+    if (!rotation || typeof rotation.x !== 'number') return 'horizontal';
+
+    const q = _reusableQuat.set(rotation.x, rotation.y, rotation.z, rotation.w);
+    _upVec.set(0, 1, 0).applyQuaternion(q);
+    const alignment = Math.abs(_upVec.dot(_worldUp));
+    if (alignment > 0.8) return 'horizontal';
+    if (alignment < 0.35) return 'vertical';
+    return 'angled';
+}
+
+function pickBestHit(hitTestResults) {
+    if (!hitTestResults || hitTestResults.length === 0) return null;
+
+    // 1. Prioritize estimated surface planes
+    const planeHits = hitTestResults.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE');
+    if (planeHits.length > 0) {
+        const horizontal = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
+        if (horizontal) return horizontal;
+
+        const vertical = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'vertical');
+        if (vertical) return vertical;
+
+        return planeHits[0];
+    }
+
+    // 2. Fallback to feature points for rapid scanning response
+    const featureHits = hitTestResults.filter((h) => h.type === 'FEATURE_POINT');
+    if (featureHits.length > 0) {
+        const hit = featureHits[0];
+        if (!hit.rotation) {
+            hit.rotation = { x: 0, y: 0, z: 0, w: 1 };
+        }
+        return hit;
+    }
+
+    return null;
+}
 
 function selectPlacedModel(entry) {
     selectedPlacedEntry = entry;
@@ -158,52 +201,6 @@ function angleBetweenTouches(touches) {
     return Math.atan2(touches[1].clientY - touches[0].clientY, touches[1].clientX - touches[0].clientX);
 }
 
-const _upVec = new THREE.Vector3();
-const _worldUp = new THREE.Vector3(0, 1, 0);
-const _reusableQuat = new THREE.Quaternion();
-
-function classifyPlaneOrientation(rotation) {
-    // FIX: Defensive check — feature points may not carry rotation data.
-    if (!rotation || typeof rotation.x !== 'number') return 'horizontal';
-
-    const q = _reusableQuat.set(rotation.x, rotation.y, rotation.z, rotation.w);
-    _upVec.set(0, 1, 0).applyQuaternion(q);
-    const alignment = Math.abs(_upVec.dot(_worldUp));
-    if (alignment > 0.8) return 'horizontal';
-    if (alignment < 0.35) return 'vertical';
-    return 'angled';
-}
-
-function pickBestHit(hitTestResults) {
-    if (!hitTestResults || hitTestResults.length === 0) return null;
-
-    const planeHits = hitTestResults.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE') ?? [];
-    if (planeHits.length > 0) {
-        const horizontal = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
-        if (horizontal) return horizontal;
-
-        const vertical = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'vertical');
-        if (vertical) return vertical;
-
-        return planeHits[0];
-    }
-
-    // FIX: Fallback to feature points so the reticle locks even before
-    // ARKit/ARCore has finished classifying a full plane. Without this,
-    // many users see a permanently gray reticle.
-    const featureHits = hitTestResults.filter((h) => h.type === 'FEATURE_POINT');
-    if (featureHits.length > 0) {
-        const hit = featureHits[0];
-        // Feature points have position but no orientation; assume a flat floor.
-        if (!hit.rotation) {
-            hit.rotation = { x: 0, y: 0, z: 0, w: 1 };
-        }
-        return hit;
-    }
-
-    return null;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. 8TH WALL PIPELINE LOGIC (SLAM ENGINE)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -211,11 +208,11 @@ function pickBestHit(hitTestResults) {
 const arStagingPipelineModule = () => {
     let touchStartX = 0;
     let touchStartY = 0;
+    let shadowPlane;
 
     return {
         name: 'ar-staging-logic',
         onStart: ({ canvas }) => {
-            // FIX: Defensive check in case the open-source binary fails to init.
             if (!XR8.Threejs || !XR8.Threejs.xrScene) {
                 console.error('8th Wall Three.js pipeline not available.');
                 hintEl.textContent = 'AR initialization failed. Please reload.';
@@ -232,7 +229,6 @@ const arStagingPipelineModule = () => {
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
             }
 
-            // FIX: Enable shadows for realistic grounding.
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -269,14 +265,12 @@ const arStagingPipelineModule = () => {
             selectionBoxHelper.visible = false;
             scene.add(selectionBoxHelper);
 
-            // FIX: Add an invisible shadow-catching plane just below the reticle
-            // to give placed models a "contact shadow" on flat surfaces.
-            const shadowPlane = new THREE.Mesh(
+            // Contact Shadow Catcher Plane
+            shadowPlane = new THREE.Mesh(
                 new THREE.PlaneGeometry(20, 20),
                 new THREE.ShadowMaterial({ opacity: 0.25 })
             );
             shadowPlane.rotation.x = -Math.PI / 2;
-            shadowPlane.position.y = -0.01;
             shadowPlane.receiveShadow = true;
             scene.add(shadowPlane);
 
@@ -360,15 +354,25 @@ const arStagingPipelineModule = () => {
 
                 const p = hit.position;
                 const r = hit.rotation;
+
+                // Sync 3D reticle to the hit surface
                 reticle.position.set(p.x, p.y, p.z);
                 reticle.quaternion.set(r.x, r.y, r.z, r.w);
-                planeIndicator.position.copy(reticle.position);
-                planeIndicator.quaternion.copy(reticle.quaternion);
+
+                if (planeIndicator) {
+                    planeIndicator.position.copy(reticle.position);
+                    planeIndicator.quaternion.copy(reticle.quaternion);
+                }
+
+                // Dynamically lock shadow catcher to real-world surface level
+                if (shadowPlane) {
+                    shadowPlane.position.y = p.y;
+                }
 
                 if (!surfaceLocked) {
                     surfaceLocked = true;
                     cssReticle.classList.add('locked');
-                    planeIndicator.visible = true;
+                    if (planeIndicator) planeIndicator.visible = true;
                     updatePlacementAvailability(true);
                 }
             } else {
@@ -376,7 +380,7 @@ const arStagingPipelineModule = () => {
                 if (missStreak > MISS_TOLERANCE_FRAMES && surfaceLocked) {
                     surfaceLocked = false;
                     cssReticle.classList.remove('locked');
-                    planeIndicator.visible = false;
+                    if (planeIndicator) planeIndicator.visible = false;
                     updatePlacementAvailability(false);
                 }
             }
@@ -445,43 +449,6 @@ function toggleDrawer(open) {
 hamburgerBtn.addEventListener('click', () => toggleDrawer());
 closeDrawerBtn.addEventListener('click', () => toggleDrawer(false));
 
-// FIX: Dispose geometries/materials on clear to prevent GPU memory leaks.
-document.getElementById('clear-btn').addEventListener('click', () => {
-    selectPlacedModel(null);
-    spawnedModels.forEach(entry => {
-        scene.remove(entry.mesh);
-        disposeHierarchy(entry.mesh);
-    });
-    spawnedModels.length = 0;
-    updateBudget();
-});
-
-document.getElementById('delete-selected-btn').addEventListener('click', () => {
-    if (!selectedPlacedEntry) return;
-
-    const entryToDelete = selectedPlacedEntry;
-    selectPlacedModel(null);
-
-    scene.remove(entryToDelete.mesh);
-    // FIX: Safe to dispose because we deep-clone on spawn (see deepCloneModel).
-    disposeHierarchy(entryToDelete.mesh);
-
-    const idx = spawnedModels.indexOf(entryToDelete);
-    if (idx !== -1) {
-        spawnedModels.splice(idx, 1);
-    }
-    updateBudget();
-});
-
-placeBtn.addEventListener('click', () => {
-    if (selectedModelData && surfaceLocked) {
-        spawnModelAtReticle(selectedModelData);
-    }
-});
-
-// FIX: Deep-clone a loaded model so each placed instance owns its own
-// geometry/materials. Without this, deleting one instance disposes the
-// shared geometry and breaks every other identical model in the scene.
 function deepCloneModel(source) {
     const clone = source.clone(true);
     clone.traverse((node) => {
@@ -507,6 +474,38 @@ function disposeHierarchy(root) {
     });
 }
 
+document.getElementById('clear-btn').addEventListener('click', () => {
+    selectPlacedModel(null);
+    spawnedModels.forEach(entry => {
+        scene.remove(entry.mesh);
+        disposeHierarchy(entry.mesh);
+    });
+    spawnedModels.length = 0;
+    updateBudget();
+});
+
+document.getElementById('delete-selected-btn').addEventListener('click', () => {
+    if (!selectedPlacedEntry) return;
+
+    const entryToDelete = selectedPlacedEntry;
+    selectPlacedModel(null);
+
+    scene.remove(entryToDelete.mesh);
+    disposeHierarchy(entryToDelete.mesh);
+
+    const idx = spawnedModels.indexOf(entryToDelete);
+    if (idx !== -1) {
+        spawnedModels.splice(idx, 1);
+    }
+    updateBudget();
+});
+
+placeBtn.addEventListener('click', () => {
+    if (selectedModelData && surfaceLocked) {
+        spawnModelAtReticle(selectedModelData);
+    }
+});
+
 function spawnModelAtReticle(modelData) {
     const glbUrl = modelData.glbUrl;
 
@@ -520,7 +519,6 @@ function spawnModelAtReticle(modelData) {
 
     templatePromise
         .then((template) => {
-            // FIX: Deep clone so each placement is an independent GPU object.
             const modelRoot = deepCloneModel(template);
             addMeshToScene(modelRoot, modelData, placementPosition, placementQuaternion);
         })
@@ -533,7 +531,7 @@ function addMeshToScene(mesh, modelData, placementPosition, placementQuaternion)
 
     const box = new THREE.Box3().setFromObject(mesh);
 
-    // FIX: Use Box3.isEmpty() instead of isFinite() for a robust pivot check.
+    // Pivot correction: align bottom-center of bounding box to origin
     if (!box.isEmpty()) {
         const centerX = (box.min.x + box.max.x) / 2;
         const centerZ = (box.min.z + box.max.z) / 2;
@@ -547,7 +545,6 @@ function addMeshToScene(mesh, modelData, placementPosition, placementQuaternion)
     const euler = new THREE.Euler().setFromQuaternion(placementQuaternion || reticle.quaternion, 'YXZ');
     wrapper.rotation.y = euler.y;
 
-    // FIX: Enable shadows on the model so it casts onto the shadow plane.
     mesh.traverse((node) => {
         if (node.isMesh) {
             node.castShadow = true;
