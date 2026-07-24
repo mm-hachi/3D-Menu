@@ -46,10 +46,10 @@ body {
 .reticle-paren {
     width: 18px;
     height: 48px;
-    border: 3px solid #34c759;
-    opacity: 0.92;
-    filter: drop-shadow(0 0 6px rgba(52, 199, 89, 0.7));
-    transition: opacity 0.2s ease;
+    border: 3px solid #8e8e93;
+    opacity: 0.75;
+    filter: drop-shadow(0 0 6px rgba(142, 142, 147, 0.5));
+    transition: border-color 0.25s ease, opacity 0.25s ease, filter 0.25s ease;
 }
 
 .reticle-left {
@@ -62,9 +62,16 @@ body {
     border-radius: 0 10px 10px 0;
 }
 
-/* Flash white on placement */
+/* Green once a real surface is confirmed */
+#reticle.locked .reticle-paren {
+    border-color: #34c759;
+    opacity: 0.92;
+    filter: drop-shadow(0 0 6px rgba(52, 199, 89, 0.7));
+}
+
+/* Flash white on placement — takes priority over the locked green state */
 #reticle.flash .reticle-paren {
-    border-color: #ffffff;
+    border-color: #ffffff !important;
 }
 
 /* --- UI Overlay HUD --- */

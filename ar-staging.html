@@ -19,8 +19,9 @@
     <!-- 8th Wall renders the camera feed and 3D scene directly to this canvas -->
     <canvas id="camera-canvas"></canvas>
 
-    <!-- CSS Reticle — always pixel-perfect at viewport center -->
-    <div id="reticle" style="display:none;">
+    <!-- CSS Reticle — always pixel-perfect at viewport center. Gray while
+         scanning, turns green (.locked) once a real surface is found. -->
+    <div id="reticle">
         <div class="reticle-paren reticle-left"></div>
         <div class="reticle-paren reticle-right"></div>
     </div>

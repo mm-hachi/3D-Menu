@@ -18,6 +18,7 @@ import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebas
 let scene, camera, renderer;
 let reticle;
 let selectionBoxHelper;
+let planeIndicator; // faint gray 3D indicator showing exactly which surface a model will land on
 
 const spawnedModels = []; // [{ mesh, price, glbUrl }]
 let selectedModelData = null; // Catalog asset data: { glbUrl, price }
@@ -83,28 +84,23 @@ function pumpPreloadQueue() {
     }
 }
 
-// CSS Reticle — positioned in DOM, always pixel-perfect at screen center
+// CSS Reticle — positioned in DOM, always pixel-perfect at screen center.
+// Always visible: gray while scanning, green once a real surface locks on.
 const cssReticle = document.getElementById('reticle');
 const hintEl = document.getElementById('placement-hint');
 const placeBtn = document.getElementById('place-btn');
-let hasHitSurface = false; // tracks whether a surface has EVER been found (controls dim-vs-hidden)
 
-// Surface-scan gating (inspired by ARKit/Quick Look, tuned to be forgiving):
-// an ESTIMATED_SURFACE_PLANE hit is a confirmed, classified surface and locks
-// instantly. A raw FEATURE_POINT hit is a noisier single-point depth guess —
-// rather than rejecting it outright (which meant the app could hang forever
-// "scanning" in dim light or on low-texture surfaces where plane classification
-// rarely completes), it's accepted once it's been consistently present for a
-// short settle window. `hitStreak` decays gradually on a miss rather than
-// resetting to zero, so brief flicker between plane/feature/no-hit doesn't
-// restart the settle countdown from scratch.
+// Surface-scan gating (mirrors ARKit/Quick Look): placement is ONLY ever
+// allowed off a confirmed, classified ESTIMATED_SURFACE_PLANE. A raw
+// FEATURE_POINT is just a noisy single-point depth guess and is never
+// accepted for placement — accuracy of position AND orientation matters
+// more than convenience here. `surfaceLocked` reflects the current frame's
+// tracking confidence, with a short miss-tolerance buffer so a single
+// dropped frame doesn't flicker the reticle/indicator/button.
 const MISS_TOLERANCE_FRAMES = 6;
-const FEATURE_POINT_SETTLE_FRAMES = 10; // ~0.3–0.4s of consistent tracking at 24–30fps
 let missStreak = 0;
-let hitStreak = 0;
 let surfaceLocked = false;
 const SCANNING_HINT = 'Move your device slowly to scan for a surface…';
-const DETECTING_HINT = 'Hold steady, locking onto surface…';
 const READY_HINT = "Aim at a surface and tap 'Place Model'";
 
 // Gesture thresholds for moving/rotating a selected placed model.
@@ -169,7 +165,7 @@ function moveSelectedModel(clientX, clientY) {
     const nx = clientX / window.innerWidth;
     const ny = clientY / window.innerHeight;
     const results = XR8.XrController.hitTest(nx, ny, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
-    const { hit } = pickBestHit(results);
+    const hit = pickBestHit(results);
     if (!hit) return;
 
     selectedPlacedEntry.mesh.position.set(hit.position.x, hit.position.y, hit.position.z);
@@ -201,22 +197,21 @@ function classifyPlaneOrientation(rotation) {
 
 // Picks the best hit test result for the current frame, preferring — in
 // order — a horizontal plane (floor/tabletop, the common furniture case),
-// then a vertical plane (wall), then any other classified plane, and only
-// falling back to a raw feature point if no classified surface is present.
+// then a vertical plane (wall), then any other classified plane. Returns
+// null if no classified plane is present — a raw feature point is never
+// good enough on its own; both position AND orientation need to come from
+// an actual detected surface.
 function pickBestHit(hitTestResults) {
     const planeHits = hitTestResults?.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE') ?? [];
-    if (planeHits.length > 0) {
-        const horizontal = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
-        if (horizontal) return { hit: horizontal, isPlane: true };
+    if (planeHits.length === 0) return null;
 
-        const vertical = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'vertical');
-        if (vertical) return { hit: vertical, isPlane: true };
+    const horizontal = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
+    if (horizontal) return horizontal;
 
-        return { hit: planeHits[0], isPlane: true };
-    }
+    const vertical = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'vertical');
+    if (vertical) return vertical;
 
-    const featureHit = hitTestResults?.find((h) => h.type === 'FEATURE_POINT');
-    return featureHit ? { hit: featureHit, isPlane: false } : { hit: null, isPlane: false };
+    return planeHits[0];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -252,6 +247,21 @@ const arStagingPipelineModule = () => {
             // A hidden THREE.Object3D acts as the placement anchor for hit test results.
             reticle = new THREE.Object3D();
             scene.add(reticle);
+
+            // Faint gray indicator showing exactly which real-world surface
+            // (floor, tabletop, or wall) the model will land on. A thin flat
+            // box rather than a paper-thin plane, so it doesn't z-fight when
+            // viewed edge-on. Only shown once a real plane is confirmed.
+            const planeIndicatorGeo = new THREE.BoxGeometry(0.5, 0.01, 0.5);
+            const planeIndicatorMat = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.16,
+                depthWrite: false,
+            });
+            planeIndicator = new THREE.Mesh(planeIndicatorGeo, planeIndicatorMat);
+            planeIndicator.visible = false;
+            scene.add(planeIndicator);
 
             // Add selection box helper for highlighting 3D models
             selectionBoxHelper = new THREE.BoxHelper(new THREE.Mesh(), 0x007aff);
@@ -337,54 +347,39 @@ const arStagingPipelineModule = () => {
             const hitTestResults = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
 
             // Prioritize horizontal (floor/tabletop) then vertical (wall) planes,
-            // same as Quick Look, before ever falling back to a raw feature point.
-            const { hit, isPlane: planeHit } = pickBestHit(hitTestResults);
+            // same as Quick Look. Returns null if no real surface is classified —
+            // a feature point alone is never enough to lock on.
+            const hit = pickBestHit(hitTestResults);
 
             if (hit) {
                 missStreak = 0;
 
-                // A classified plane is trusted immediately. A feature point
-                // still has to earn trust by building up its settle streak.
-                hitStreak = planeHit ? FEATURE_POINT_SETTLE_FRAMES : Math.min(hitStreak + 1, FEATURE_POINT_SETTLE_FRAMES);
-
-                // Update invisible anchor so placement uses the live world position
+                // Update the invisible anchor AND the visible 3D indicator so
+                // both placement and the on-screen preview use the live,
+                // correctly-oriented position of the detected surface.
                 const p = hit.position;
                 const r = hit.rotation;
                 reticle.position.set(p.x, p.y, p.z);
                 reticle.quaternion.set(r.x, r.y, r.z, r.w);
+                planeIndicator.position.copy(reticle.position);
+                planeIndicator.quaternion.copy(reticle.quaternion);
 
-                const isSettled = hitStreak >= FEATURE_POINT_SETTLE_FRAMES;
-
-                cssReticle.style.display = 'flex';
-                cssReticle.style.opacity = isSettled ? '1' : '0.5';
-
-                if (isSettled) {
-                    hasHitSurface = true;
-                    if (!surfaceLocked) {
-                        surfaceLocked = true;
-                        updatePlacementAvailability(true);
-                    }
-                } else if (selectedModelData) {
-                    hintEl.textContent = DETECTING_HINT;
+                if (!surfaceLocked) {
+                    surfaceLocked = true;
+                    cssReticle.classList.add('locked');
+                    planeIndicator.visible = true;
+                    updatePlacementAvailability(true);
                 }
             } else {
                 missStreak += 1;
-                // Decay gradually rather than resetting to zero instantly, so
-                // brief flicker between plane/feature/no-hit doesn't force the
-                // settle countdown to restart from scratch.
-                hitStreak = Math.max(0, hitStreak - 1);
-
                 // Tolerate a handful of dropped frames before treating the
                 // surface as lost, so brief tracking hiccups don't flicker
-                // the reticle or the Place button in and out.
-                if (missStreak > MISS_TOLERANCE_FRAMES) {
-                    // Dim but keep visible so it doesn't flash in/out constantly
-                    cssReticle.style.opacity = hasHitSurface ? '0.35' : '0';
-
-                    if (surfaceLocked) {
-                        surfaceLocked = false;
-                        updatePlacementAvailability(false);
-                    }
+                // the reticle, indicator, or Place button in and out.
+                if (missStreak > MISS_TOLERANCE_FRAMES && surfaceLocked) {
+                    surfaceLocked = false;
+                    cssReticle.classList.remove('locked');
+                    planeIndicator.visible = false;
+                    updatePlacementAvailability(false);
                 }
             }
 
