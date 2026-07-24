@@ -14,7 +14,6 @@ import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebas
 
 let scene, camera, renderer;
 let reticle;
-let selectionBoxHelper;
 let planeIndicator;
 
 const spawnedModels = [];
@@ -99,15 +98,20 @@ const pointer = new THREE.Vector2();
 // ─────────────────────────────────────────────────────────────────────────────
 
 function selectPlacedModel(entry) {
+    // Hide all selection boxes first
+    spawnedModels.forEach(e => {
+        const box = e.mesh.getObjectByName('selectionBox');
+        if (box) box.visible = false;
+    });
+
     selectedPlacedEntry = entry;
     const deleteBtn = document.getElementById('delete-selected-btn');
 
     if (entry) {
-        selectionBoxHelper.setFromObject(entry.mesh);
-        selectionBoxHelper.visible = true;
+        const box = entry.mesh.getObjectByName('selectionBox');
+        if (box) box.visible = true;
         deleteBtn.style.display = 'inline-flex';
     } else {
-        selectionBoxHelper.visible = false;
         deleteBtn.style.display = 'none';
     }
 }
@@ -149,9 +153,6 @@ function moveSelectedModel(clientX, clientY) {
     if (!hit) return;
 
     selectedPlacedEntry.mesh.position.set(hit.position.x, hit.position.y, hit.position.z);
-    if (selectionBoxHelper.visible) {
-        selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
-    }
 }
 
 function angleBetweenTouches(touches) {
@@ -169,13 +170,11 @@ function classifyPlaneOrientation(rotation) {
     _upVec.set(0, 1, 0).applyQuaternion(q);
     const alignment = Math.abs(_upVec.dot(_worldUp));
 
-    // Strict thresholds for a flat floor
     if (alignment > 0.85) return 'horizontal';
     return 'non-horizontal';
 }
 
 function pickBestHit(hitTestResults) {
-    // 1. Check for estimated surface planes first
     const planeHits = hitTestResults?.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE') ?? [];
     if (planeHits.length > 0) {
         const horizontalHit = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
@@ -183,7 +182,6 @@ function pickBestHit(hitTestResults) {
         return planeHits[0];
     }
 
-    // 2. Fallback to Feature Points if no full surface plane is found yet
     const featureHits = hitTestResults?.filter((h) => h.type === 'FEATURE_POINT') ?? [];
     if (featureHits.length > 0) {
         const hit = featureHits[0];
@@ -193,7 +191,6 @@ function pickBestHit(hitTestResults) {
         return hit;
     }
 
-    // 3. Return null if nothing valid is found
     return null;
 }
 
@@ -204,6 +201,7 @@ function pickBestHit(hitTestResults) {
 const arStagingPipelineModule = () => {
     let touchStartX = 0;
     let touchStartY = 0;
+    let groundPlane; // Module-scoped to track SLAM height dynamically
 
     return {
         name: 'ar-staging-logic',
@@ -227,7 +225,6 @@ const arStagingPipelineModule = () => {
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-            // Scene Lighting
             const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.5);
             light.position.set(0.5, 1, 0.25);
             scene.add(light);
@@ -256,18 +253,14 @@ const arStagingPipelineModule = () => {
             planeIndicator.visible = false;
             scene.add(planeIndicator);
 
-            selectionBoxHelper = new THREE.BoxHelper(new THREE.Mesh(), 0x007aff);
-            selectionBoxHelper.visible = false;
-            scene.add(selectionBoxHelper);
-
-            const shadowPlane = new THREE.Mesh(
-                new THREE.PlaneGeometry(20, 20),
-                new THREE.ShadowMaterial({ opacity: 0.25 })
+            // Dynamic floor tracking shadow plane
+            groundPlane = new THREE.Mesh(
+                new THREE.PlaneGeometry(100, 100),
+                new THREE.ShadowMaterial({ opacity: 0.35 })
             );
-            shadowPlane.rotation.x = -Math.PI / 2;
-            shadowPlane.position.y = -0.01;
-            shadowPlane.receiveShadow = true;
-            scene.add(shadowPlane);
+            groundPlane.rotation.x = -Math.PI / 2;
+            groundPlane.receiveShadow = true;
+            scene.add(groundPlane);
 
             let isDragging = false;
             let isRotating = false;
@@ -292,9 +285,6 @@ const arStagingPipelineModule = () => {
                 if (isRotating && e.touches.length === 2 && selectedPlacedEntry) {
                     const currentAngle = angleBetweenTouches(e.touches);
                     selectedPlacedEntry.mesh.rotation.y = rotateStartY + (currentAngle - rotateStartAngle);
-                    if (selectionBoxHelper.visible) {
-                        selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
-                    }
                     return;
                 }
 
@@ -332,10 +322,6 @@ const arStagingPipelineModule = () => {
                 }
             });
 
-            canvas.addEventListener('click', (e) => {
-                handleCanvasTap(e.clientX, e.clientY);
-            });
-
             updatePlacementAvailability(false);
         },
         onUpdate: () => {
@@ -354,6 +340,9 @@ const arStagingPipelineModule = () => {
                 planeIndicator.position.copy(reticle.position);
                 planeIndicator.quaternion.copy(reticle.quaternion);
 
+                // Snap global shadow height directly to the detected floor
+                if (groundPlane) groundPlane.position.y = p.y;
+
                 if (!surfaceLocked) {
                     surfaceLocked = true;
                     cssReticle.classList.add('locked');
@@ -368,10 +357,6 @@ const arStagingPipelineModule = () => {
                     planeIndicator.visible = false;
                     updatePlacementAvailability(false);
                 }
-            }
-
-            if (selectedPlacedEntry && selectionBoxHelper.visible) {
-                selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
             }
         }
     };
@@ -498,38 +483,47 @@ function spawnModelAtReticle(modelData) {
     setTimeout(() => cssReticle.classList.remove('flash'), 200);
 
     const placementPosition = reticle.position.clone();
-    const placementQuaternion = reticle.quaternion.clone();
 
     const templatePromise = modelCache[glbUrl] || preloadModel(glbUrl, { priority: true });
 
     templatePromise
         .then((template) => {
             const modelRoot = deepCloneModel(template);
-            addMeshToScene(modelRoot, modelData, placementPosition, placementQuaternion);
+            addMeshToScene(modelRoot, modelData, placementPosition);
         })
         .catch((err) => console.error('[spawnModel] Load error:', err));
 }
 
-function addMeshToScene(mesh, modelData, placementPosition, placementQuaternion) {
+function addMeshToScene(mesh, modelData, placementPosition) {
     const wrapper = new THREE.Group();
-    wrapper.add(mesh);
 
-    wrapper.updateMatrixWorld(true);
-    mesh.updateMatrixWorld(true);
+    // An inner wrapper absorbs the model's footprint offset without breaking local scale
+    const innerWrapper = new THREE.Group();
+    wrapper.add(innerWrapper);
+    innerWrapper.add(mesh);
 
-    const box = new THREE.Box3().setFromObject(mesh);
+    // Temporarily center to compute clean footprint bounds
+    wrapper.position.set(0, 0, 0);
+    wrapper.rotation.set(0, 0, 0);
+    wrapper.scale.set(1, 1, 1);
+
+    innerWrapper.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(innerWrapper);
 
     if (!box.isEmpty()) {
-        const centerX = (box.min.x + box.max.x) / 2;
-        const centerZ = (box.min.z + box.max.z) / 2;
+        const center = new THREE.Vector3();
+        box.getCenter(center);
 
-        mesh.position.x -= centerX;
-        mesh.position.z -= centerZ;
-        mesh.position.y -= box.min.y;
+        // Shift innerWrapper so the model's bottom-center sits flawlessly at (0,0,0) locally
+        innerWrapper.position.x = -center.x;
+        innerWrapper.position.z = -center.z;
+        innerWrapper.position.y = -box.min.y;
     }
 
-    wrapper.position.copy(placementPosition || reticle.position);
+    // Apply the spatial placement position
+    wrapper.position.copy(placementPosition);
 
+    // Orient the wrapper to immediately face the camera
     const cameraDirection = new THREE.Vector3();
     camera.getWorldDirection(cameraDirection);
     wrapper.rotation.y = Math.atan2(-cameraDirection.x, -cameraDirection.z);
@@ -541,7 +535,26 @@ function addMeshToScene(mesh, modelData, placementPosition, placementQuaternion)
         }
     });
 
+    // Create an oriented Selection Box explicitly attached to the wrapper
+    const finalBox = new THREE.Box3().setFromObject(innerWrapper);
+    const size = new THREE.Vector3();
+    finalBox.getSize(size);
+
+    const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
+    const edges = new THREE.EdgesGeometry(boxGeo);
+    const selectionBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({
+        color: 0x34c759, // Standardized active-green for 47 XLVII
+        depthTest: false,
+        transparent: true
+    }));
+
+    selectionBox.position.set(0, size.y / 2, 0);
+    selectionBox.name = 'selectionBox';
+    selectionBox.visible = false;
+    wrapper.add(selectionBox);
+
     scene.add(wrapper);
+
     const entry = { mesh: wrapper, price: modelData.price, glbUrl: modelData.glbUrl };
     spawnedModels.push(entry);
 
