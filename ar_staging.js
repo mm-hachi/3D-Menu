@@ -12,16 +12,122 @@ import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/fi
 import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js';
 
 const firebaseConfig = {
-    // Replace with your actual XLVII Firebase project config
-    apiKey: "YOUR_API_KEY",
-    authDomain: "forty-seven-spatial.firebaseapp.com",
-    projectId: "forty-seven-spatial",
-    storageBucket: "forty-seven-spatial.firebasestorage.app"
+    apiKey: 'AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY',
+    authDomain: 'shot47-database.firebaseapp.com',
+    projectId: 'shot47-database',
+    storageBucket: 'shot47-database.firebasestorage.app',
+    messagingSenderId: '77237094269',
+    appId: '1:77237094269:web:a90a6c6239cb66e3102e14',
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const storage = getStorage(app);
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+const storage = getStorage(firebaseApp);
+
+const registry = { furniture: [], carpets: [], decor: [] };
+let activeCategory = 'furniture';
+
+const collectionMap = {
+    furniture: 'furniture_models',
+    carpets: 'carpet_models',
+    decor: 'decor_models',
+};
+
+async function resolveUrl(pathOrUrl, folder) {
+    if (!pathOrUrl) return null;
+    if (pathOrUrl.startsWith('http')) return pathOrUrl;
+    return getDownloadURL(ref(storage, `${folder}/${pathOrUrl}`));
+}
+
+function selectCatalogModel(card, assetData) {
+    document.querySelectorAll('.catalog-item').forEach(el => el.classList.remove('selected'));
+    card.classList.add('selected');
+    selectedModelData = assetData;
+
+    placeBtn.style.display = 'inline-flex';
+    hintEl.classList.add('show-hint');
+    updatePlacementAvailability(surfaceLocked);
+}
+
+function renderCatalog(category) {
+    const list = document.getElementById('catalog-list');
+    list.innerHTML = '';
+    const assets = registry[category] ?? [];
+
+    if (assets.length === 0) {
+        list.innerHTML = '<div class="empty-notice">Updating digital catalog…</div>';
+        return;
+    }
+
+    assets.forEach((asset) => {
+        const card = document.createElement('div');
+        card.className = 'catalog-item state-loading';
+        card.innerHTML = `
+            <div class="thumb-wrapper"><img class="catalog-thumb" alt="${asset.title}" /></div>
+            <div class="card-meta"><span>${asset.title}</span></div>
+        `;
+        list.appendChild(card);
+
+        const img = card.querySelector('.catalog-thumb');
+        if (asset.imgName) {
+            resolveUrl(asset.imgName, 'models/thumbnails')
+                .then((url) => { img.src = url; })
+                .catch(() => { });
+        }
+
+        resolveUrl(asset.glbName, 'models/glb')
+            .then((glbUrl) => {
+                card.classList.remove('state-loading');
+                const assetData = { glbUrl, price: asset.price };
+                const isFirstCard = list.children[0] === card;
+
+                preloadModel(glbUrl, { priority: isFirstCard });
+
+                card.addEventListener('click', () => {
+                    selectCatalogModel(card, assetData);
+                    preloadModel(glbUrl, { priority: true });
+                });
+
+                if (!selectedModelData && isFirstCard) {
+                    selectCatalogModel(card, assetData);
+                }
+            })
+            .catch(() => {
+                card.classList.remove('state-loading');
+                card.style.opacity = '0.3';
+            });
+    });
+}
+
+function initCatalogSync() {
+    Object.entries(collectionMap).forEach(([category, collectionName]) => {
+        onSnapshot(collection(db, collectionName), (snapshot) => {
+            registry[category] = [];
+            snapshot.forEach((doc) => {
+                const d = doc.data();
+                if (!d.glb) return;
+                registry[category].push({
+                    title: d.title ?? 'Unnamed',
+                    glbName: d.glb,
+                    imgName: d.img ?? null,
+                    price: d.price ?? 349.00
+                });
+            });
+            if (category === activeCategory) renderCatalog(activeCategory);
+        });
+    });
+}
+
+document.querySelectorAll('.tab-btn').forEach((tab) => {
+    tab.addEventListener('click', (e) => {
+        document.querySelectorAll('.tab-btn').forEach((t) => t.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        activeCategory = e.currentTarget.dataset.category;
+        renderCatalog(activeCategory);
+    });
+});
+
+initCatalogSync();
 
 // 2. STATE & CACHE MANAGEMENT
 let scene, camera, renderer;
