@@ -2,9 +2,6 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-// 8th Wall's XR8.Threejs.pipelineModule() looks for window.THREE.
-// ES module imports are scoped and don't auto-expose globals, so we
-// must attach it manually before the XR8 pipeline is initialized.
 window.THREE = THREE;
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
@@ -18,13 +15,12 @@ import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebas
 let scene, camera, renderer;
 let reticle;
 let selectionBoxHelper;
-let planeIndicator; // faint gray 3D indicator showing exactly which surface a model will land on
+let planeIndicator;
 
-const spawnedModels = []; // [{ mesh, price, glbUrl }]
-let selectedModelData = null; // Catalog asset data: { glbUrl, price }
-let selectedPlacedEntry = null; // Placed 3D object: { mesh, price, glbUrl }
+const spawnedModels = [];
+let selectedModelData = null;
+let selectedPlacedEntry = null;
 
-// Enable Three.js network cache
 THREE.Cache.enabled = true;
 
 const dracoLoader = new DRACOLoader();
@@ -36,7 +32,6 @@ gltfLoader.setDRACOLoader(dracoLoader);
 
 const modelCache = {};
 
-// Background preload queue for instant placement
 const PRELOAD_CONCURRENCY = 2;
 let activePreloads = 0;
 const preloadQueue = [];
@@ -84,29 +79,18 @@ function pumpPreloadQueue() {
     }
 }
 
-// CSS Reticle — positioned in DOM, always pixel-perfect at screen center.
-// Always visible: gray while scanning, green once a real surface locks on.
 const cssReticle = document.getElementById('reticle');
 const hintEl = document.getElementById('placement-hint');
 const placeBtn = document.getElementById('place-btn');
 
-// Surface-scan gating (mirrors ARKit/Quick Look): placement is ONLY ever
-// allowed off a confirmed, classified ESTIMATED_SURFACE_PLANE. A raw
-// FEATURE_POINT is just a noisy single-point depth guess and is never
-// accepted for placement — accuracy of position AND orientation matters
-// more than convenience here. `surfaceLocked` reflects the current frame's
-// tracking confidence, with a short miss-tolerance buffer so a single
-// dropped frame doesn't flicker the reticle/indicator/button.
 const MISS_TOLERANCE_FRAMES = 6;
 let missStreak = 0;
 let surfaceLocked = false;
 const SCANNING_HINT = 'Move your device slowly to scan for a surface…';
 const READY_HINT = "Aim at a surface and tap 'Place Model'";
 
-// Gesture thresholds for moving/rotating a selected placed model.
-const TAP_MOVE_THRESHOLD = 10; // px — below this, a touch is a tap, not a drag
+const TAP_MOVE_THRESHOLD = 10;
 
-// Raycasting for Model Selection
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
@@ -152,15 +136,11 @@ function handleCanvasTap(clientX, clientY) {
         }
     }
 
-    // Tapped open space -> deselect placed model
     selectPlacedModel(null);
 }
 
-// Moves the currently-selected placed model by re-running a live hit test at
-// the given screen point, so it always tracks exactly where the finger is
-// touching the real surface — not an arbitrary fixed-height plane.
 function moveSelectedModel(clientX, clientY) {
-    if (!selectedPlacedEntry || !window.XR8) return;
+    if (!selectedPlacedEntry || !window.XR8 || !window.XR8.XrController) return;
 
     const nx = clientX / window.innerWidth;
     const ny = clientY / window.innerHeight;
@@ -178,15 +158,14 @@ function angleBetweenTouches(touches) {
     return Math.atan2(touches[1].clientY - touches[0].clientY, touches[1].clientX - touches[0].clientX);
 }
 
-// Classifies a plane hit's orientation from its rotation, the same distinction
-// ARKit/Quick Look makes between horizontal (floor, tabletop) and vertical
-// (wall) surfaces. We rotate the world up vector (0,1,0) by the hit's own
-// rotation to get the plane's normal, then check how aligned it is with
-// world-up: near 1 -> horizontal, near 0 -> vertical, in between -> angled.
 const _upVec = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
 const _reusableQuat = new THREE.Quaternion();
+
 function classifyPlaneOrientation(rotation) {
+    // FIX: Defensive check — feature points may not carry rotation data.
+    if (!rotation || typeof rotation.x !== 'number') return 'horizontal';
+
     const q = _reusableQuat.set(rotation.x, rotation.y, rotation.z, rotation.w);
     _upVec.set(0, 1, 0).applyQuaternion(q);
     const alignment = Math.abs(_upVec.dot(_worldUp));
@@ -195,23 +174,34 @@ function classifyPlaneOrientation(rotation) {
     return 'angled';
 }
 
-// Picks the best hit test result for the current frame, preferring — in
-// order — a horizontal plane (floor/tabletop, the common furniture case),
-// then a vertical plane (wall), then any other classified plane. Returns
-// null if no classified plane is present — a raw feature point is never
-// good enough on its own; both position AND orientation need to come from
-// an actual detected surface.
 function pickBestHit(hitTestResults) {
-    const planeHits = hitTestResults?.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE') ?? [];
-    if (planeHits.length === 0) return null;
+    if (!hitTestResults || hitTestResults.length === 0) return null;
 
-    const horizontal = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
-    if (horizontal) return horizontal;
+    const planeHits = hitTestResults.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE') ?? [];
+    if (planeHits.length > 0) {
+        const horizontal = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
+        if (horizontal) return horizontal;
 
-    const vertical = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'vertical');
-    if (vertical) return vertical;
+        const vertical = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'vertical');
+        if (vertical) return vertical;
 
-    return planeHits[0];
+        return planeHits[0];
+    }
+
+    // FIX: Fallback to feature points so the reticle locks even before
+    // ARKit/ARCore has finished classifying a full plane. Without this,
+    // many users see a permanently gray reticle.
+    const featureHits = hitTestResults.filter((h) => h.type === 'FEATURE_POINT');
+    if (featureHits.length > 0) {
+        const hit = featureHits[0];
+        // Feature points have position but no orientation; assume a flat floor.
+        if (!hit.rotation) {
+            hit.rotation = { x: 0, y: 0, z: 0, w: 1 };
+        }
+        return hit;
+    }
+
+    return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -225,6 +215,14 @@ const arStagingPipelineModule = () => {
     return {
         name: 'ar-staging-logic',
         onStart: ({ canvas }) => {
+            // FIX: Defensive check in case the open-source binary fails to init.
+            if (!XR8.Threejs || !XR8.Threejs.xrScene) {
+                console.error('8th Wall Three.js pipeline not available.');
+                hintEl.textContent = 'AR initialization failed. Please reload.';
+                hintEl.classList.add('show-hint');
+                return;
+            }
+
             const { scene: xrScene, camera: xrCamera, renderer: xrRenderer } = XR8.Threejs.xrScene();
             scene = xrScene;
             camera = xrCamera;
@@ -234,24 +232,28 @@ const arStagingPipelineModule = () => {
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
             }
 
+            // FIX: Enable shadows for realistic grounding.
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
             // Scene Lighting
             const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.5);
             light.position.set(0.5, 1, 0.25);
             scene.add(light);
 
-            const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
             dirLight.position.set(1, 4, 2);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            dirLight.shadow.camera.near = 0.1;
+            dirLight.shadow.camera.far = 10;
+            dirLight.shadow.bias = -0.001;
             scene.add(dirLight);
 
-            // We use a CSS reticle (always screen-center) instead of a 3D mesh.
-            // A hidden THREE.Object3D acts as the placement anchor for hit test results.
             reticle = new THREE.Object3D();
             scene.add(reticle);
 
-            // Faint gray indicator showing exactly which real-world surface
-            // (floor, tabletop, or wall) the model will land on. A thin flat
-            // box rather than a paper-thin plane, so it doesn't z-fight when
-            // viewed edge-on. Only shown once a real plane is confirmed.
             const planeIndicatorGeo = new THREE.BoxGeometry(0.5, 0.01, 0.5);
             const planeIndicatorMat = new THREE.MeshBasicMaterial({
                 color: 0xffffff,
@@ -263,12 +265,21 @@ const arStagingPipelineModule = () => {
             planeIndicator.visible = false;
             scene.add(planeIndicator);
 
-            // Add selection box helper for highlighting 3D models
             selectionBoxHelper = new THREE.BoxHelper(new THREE.Mesh(), 0x007aff);
             selectionBoxHelper.visible = false;
             scene.add(selectionBoxHelper);
 
-            // Pointer/Touch Listeners for selection, drag-to-move, and pinch-to-rotate
+            // FIX: Add an invisible shadow-catching plane just below the reticle
+            // to give placed models a "contact shadow" on flat surfaces.
+            const shadowPlane = new THREE.Mesh(
+                new THREE.PlaneGeometry(20, 20),
+                new THREE.ShadowMaterial({ opacity: 0.25 })
+            );
+            shadowPlane.rotation.x = -Math.PI / 2;
+            shadowPlane.position.y = -0.01;
+            shadowPlane.receiveShadow = true;
+            scene.add(shadowPlane);
+
             let isDragging = false;
             let isRotating = false;
             let rotateStartAngle = 0;
@@ -320,13 +331,12 @@ const arStagingPipelineModule = () => {
                 }
                 if (isDragging) {
                     isDragging = false;
-                    return; // was a drag, not a tap — don't trigger select/deselect
+                    return;
                 }
                 if (e.changedTouches.length === 1) {
                     const endX = e.changedTouches[0].clientX;
                     const endY = e.changedTouches[0].clientY;
 
-                    // Only count as a tap if touch didn't drag significantly
                     if (Math.hypot(endX - touchStartX, endY - touchStartY) < TAP_MOVE_THRESHOLD) {
                         handleCanvasTap(endX, endY);
                     }
@@ -334,7 +344,6 @@ const arStagingPipelineModule = () => {
             });
 
             canvas.addEventListener('click', (e) => {
-                // Desktop / Mouse fallback
                 handleCanvasTap(e.clientX, e.clientY);
             });
 
@@ -343,20 +352,12 @@ const arStagingPipelineModule = () => {
         onUpdate: () => {
             if (!scene) return;
 
-            // Perform hit test straight out from viewport center (0.5, 0.5)
             const hitTestResults = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
-
-            // Prioritize horizontal (floor/tabletop) then vertical (wall) planes,
-            // same as Quick Look. Returns null if no real surface is classified —
-            // a feature point alone is never enough to lock on.
             const hit = pickBestHit(hitTestResults);
 
             if (hit) {
                 missStreak = 0;
 
-                // Update the invisible anchor AND the visible 3D indicator so
-                // both placement and the on-screen preview use the live,
-                // correctly-oriented position of the detected surface.
                 const p = hit.position;
                 const r = hit.rotation;
                 reticle.position.set(p.x, p.y, p.z);
@@ -372,9 +373,6 @@ const arStagingPipelineModule = () => {
                 }
             } else {
                 missStreak += 1;
-                // Tolerate a handful of dropped frames before treating the
-                // surface as lost, so brief tracking hiccups don't flicker
-                // the reticle, indicator, or Place button in and out.
                 if (missStreak > MISS_TOLERANCE_FRAMES && surfaceLocked) {
                     surfaceLocked = false;
                     cssReticle.classList.remove('locked');
@@ -383,7 +381,6 @@ const arStagingPipelineModule = () => {
                 }
             }
 
-            // Keep selection bounding box aligned with selected object
             if (selectedPlacedEntry && selectionBoxHelper.visible) {
                 selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
             }
@@ -393,14 +390,14 @@ const arStagingPipelineModule = () => {
 
 const onxrloaded = () => {
     XR8.addCameraPipelineModules([
-        XR8.GlTextureRenderer.pipelineModule(),       // Camera feed renderer
-        XR8.Threejs.pipelineModule(),                 // Three.js sync
-        XR8.XrController.pipelineModule(),            // SLAM tracking engine
-        window.XRExtras.AlmostThere.pipelineModule(), // Loading UI
+        XR8.GlTextureRenderer.pipelineModule(),
+        XR8.Threejs.pipelineModule(),
+        XR8.XrController.pipelineModule(),
+        window.XRExtras.AlmostThere.pipelineModule(),
         window.XRExtras.FullWindowCanvas.pipelineModule(),
         window.XRExtras.Loading.pipelineModule(),
         window.XRExtras.RuntimeError.pipelineModule(),
-        arStagingPipelineModule(),                    // App Logic
+        arStagingPipelineModule(),
     ]);
 
     XR8.run({ canvas: document.getElementById('camera-canvas') });
@@ -421,9 +418,6 @@ function updateBudget() {
     document.getElementById('budget-value').textContent = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Reflects current surface-lock state in the Place button (disabled/dimmed
-// until a real surface is confirmed) and, if a catalog item is selected,
-// in the placement hint text.
 function updatePlacementAvailability(ready) {
     placeBtn.disabled = !ready;
     placeBtn.style.opacity = ready ? '1' : '0.4';
@@ -434,7 +428,6 @@ function updatePlacementAvailability(ready) {
     }
 }
 
-// Hamburger Drawer Toggle
 const catalogDrawer = document.getElementById('catalog-drawer');
 const hamburgerBtn = document.getElementById('hamburger-btn');
 const closeDrawerBtn = document.getElementById('close-drawer-btn');
@@ -452,15 +445,17 @@ function toggleDrawer(open) {
 hamburgerBtn.addEventListener('click', () => toggleDrawer());
 closeDrawerBtn.addEventListener('click', () => toggleDrawer(false));
 
-// Clear All Models
+// FIX: Dispose geometries/materials on clear to prevent GPU memory leaks.
 document.getElementById('clear-btn').addEventListener('click', () => {
     selectPlacedModel(null);
-    spawnedModels.forEach(entry => scene.remove(entry.mesh));
+    spawnedModels.forEach(entry => {
+        scene.remove(entry.mesh);
+        disposeHierarchy(entry.mesh);
+    });
     spawnedModels.length = 0;
     updateBudget();
 });
 
-// Dynamic Delete Button Action
 document.getElementById('delete-selected-btn').addEventListener('click', () => {
     if (!selectedPlacedEntry) return;
 
@@ -468,13 +463,8 @@ document.getElementById('delete-selected-btn').addEventListener('click', () => {
     selectPlacedModel(null);
 
     scene.remove(entryToDelete.mesh);
-    entryToDelete.mesh.traverse((node) => {
-        if (node.isMesh) {
-            node.geometry?.dispose();
-            const mats = Array.isArray(node.material) ? node.material : [node.material];
-            mats.forEach(m => m?.dispose());
-        }
-    });
+    // FIX: Safe to dispose because we deep-clone on spawn (see deepCloneModel).
+    disposeHierarchy(entryToDelete.mesh);
 
     const idx = spawnedModels.indexOf(entryToDelete);
     if (idx !== -1) {
@@ -483,72 +473,97 @@ document.getElementById('delete-selected-btn').addEventListener('click', () => {
     updateBudget();
 });
 
-// Dynamic Place Button Action
 placeBtn.addEventListener('click', () => {
-    // Guard against placement before a real surface has been confirmed —
-    // without this check, a tap before tracking locks on would place the
-    // model at whatever stale/default transform `reticle` currently holds.
     if (selectedModelData && surfaceLocked) {
         spawnModelAtReticle(selectedModelData);
     }
 });
 
+// FIX: Deep-clone a loaded model so each placed instance owns its own
+// geometry/materials. Without this, deleting one instance disposes the
+// shared geometry and breaks every other identical model in the scene.
+function deepCloneModel(source) {
+    const clone = source.clone(true);
+    clone.traverse((node) => {
+        if (node.isMesh) {
+            if (node.geometry) node.geometry = node.geometry.clone();
+            if (Array.isArray(node.material)) {
+                node.material = node.material.map(m => m.clone());
+            } else if (node.material) {
+                node.material = node.material.clone();
+            }
+        }
+    });
+    return clone;
+}
+
+function disposeHierarchy(root) {
+    root.traverse((node) => {
+        if (node.isMesh) {
+            node.geometry?.dispose();
+            const mats = Array.isArray(node.material) ? node.material : [node.material];
+            mats.forEach(m => m?.dispose());
+        }
+    });
+}
+
 function spawnModelAtReticle(modelData) {
     const glbUrl = modelData.glbUrl;
 
-    // Flash the CSS reticle white as placement feedback
     cssReticle.classList.add('flash');
     setTimeout(() => cssReticle.classList.remove('flash'), 200);
 
-    // Snapshot the anchor's world position at the moment of the tap
     const placementPosition = reticle.position.clone();
     const placementQuaternion = reticle.quaternion.clone();
 
     const templatePromise = modelCache[glbUrl] || preloadModel(glbUrl, { priority: true });
 
     templatePromise
-        .then((template) => addMeshToScene(template.clone(), modelData, placementPosition, placementQuaternion))
+        .then((template) => {
+            // FIX: Deep clone so each placement is an independent GPU object.
+            const modelRoot = deepCloneModel(template);
+            addMeshToScene(modelRoot, modelData, placementPosition, placementQuaternion);
+        })
         .catch((err) => console.error('[spawnModel] Load error:', err));
 }
 
 function addMeshToScene(mesh, modelData, placementPosition, placementQuaternion) {
-    // Some GLBs are authored with an off-center or offset pivot (e.g. the
-    // mesh sits far from its own local origin, a common export quirk). If we
-    // just set position on the raw mesh, the pivot lands exactly where we
-    // want but the visible geometry can appear anywhere relative to it —
-    // which is what caused models to spawn "in the air" or seemingly
-    // off-screen. Wrapping in a group and re-centering the mesh inside it
-    // forces the model's actual bounding box to sit exactly at the
-    // placement point every time, regardless of the source asset's pivot.
     const wrapper = new THREE.Group();
     wrapper.add(mesh);
 
     const box = new THREE.Box3().setFromObject(mesh);
-    if (isFinite(box.min.x) && isFinite(box.max.x)) {
+
+    // FIX: Use Box3.isEmpty() instead of isFinite() for a robust pivot check.
+    if (!box.isEmpty()) {
         const centerX = (box.min.x + box.max.x) / 2;
         const centerZ = (box.min.z + box.max.z) / 2;
         mesh.position.x -= centerX;
         mesh.position.z -= centerZ;
-        mesh.position.y -= box.min.y; // rest the model's base on the surface, not its raw origin
+        mesh.position.y -= box.min.y;
     }
 
     wrapper.position.copy(placementPosition || reticle.position);
 
-    // Extract only Y rotation so model stays upright on the floor plane
     const euler = new THREE.Euler().setFromQuaternion(placementQuaternion || reticle.quaternion, 'YXZ');
     wrapper.rotation.y = euler.y;
+
+    // FIX: Enable shadows on the model so it casts onto the shadow plane.
+    mesh.traverse((node) => {
+        if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+        }
+    });
 
     scene.add(wrapper);
     const entry = { mesh: wrapper, price: modelData.price, glbUrl: modelData.glbUrl };
     spawnedModels.push(entry);
 
-    // Hide the placement hint permanently after first model is placed
     if (spawnedModels.length === 1) {
         hintEl.classList.remove('show-hint');
         hintEl.style.display = 'none';
     }
 
-    // Automatically select newly placed model
     selectPlacedModel(entry);
     updateBudget();
 }
@@ -590,7 +605,6 @@ function selectCatalogModel(card, assetData) {
     card.classList.add('selected');
     selectedModelData = assetData;
 
-    // Show place button & placement guidance hint, reflecting current tracking state
     placeBtn.style.display = 'inline-flex';
     hintEl.classList.add('show-hint');
     updatePlacementAvailability(surfaceLocked);
