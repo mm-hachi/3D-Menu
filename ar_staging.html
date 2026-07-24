@@ -5,9 +5,7 @@
 
     <meta charset="UTF-8">
 
-    <meta
-        name="viewport"
-        content="width=device-width,
+    <meta name="viewport" content="width=device-width,
                  initial-scale=1,
                  maximum-scale=1,
                  user-scalable=no,
@@ -16,6 +14,11 @@
     <title>AR Furniture Staging</title>
 
     <link rel="stylesheet" href="ar_staging.css">
+
+    <!-- 8th Wall Open-Source Engine Binary (SLAM World Tracking) -->
+    <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js" async crossorigin="anonymous"
+        data-preload-chunks="slam">
+        </script>
 
 </head>
 
@@ -38,17 +41,13 @@
 
     <header id="topBar">
 
-        <button
-            id="exitBtn"
-            title="Exit">
+        <button id="exitBtn" title="Exit">
 
             ✕
 
         </button>
 
-        <button
-            id="catalogueBtn"
-            title="Catalogue">
+        <button id="catalogueBtn" title="Catalogue">
 
             ☰ Catalogue
 
@@ -204,7 +203,7 @@
     <script type="module">
 
         import * as THREE from
-        'https://unpkg.com/three@0.180.0/build/three.module.js';
+            'https://unpkg.com/three@0.180.0/build/three.module.js';
 
         window.THREE = THREE;
 
@@ -213,9 +212,7 @@
 
     <!-- Main App -->
 
-    <script
-        type="module"
-        src="ar_staging.js">
+    <script type="module" src="ar_staging.js">
 
     </script>
 

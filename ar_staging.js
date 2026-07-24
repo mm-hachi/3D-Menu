@@ -1,10 +1,9 @@
 // ============================================================
 // AR Retail Staging App
 // ------------------------------------------------------------
-// This single ES module bootstraps the 8th Wall XR session,
-// initializes Firebase, pulls furniture items from Firestore + Storage,
-// and lets the user preview and place multiple GLB assets on a
-// detected floor plane while rotating them around the vertical axis.
+// Single ES module bootstrapping the 8th Wall Open-Source XR session,
+// initializing Firebase, pulling furniture items, and rendering
+// GLB assets in AR.
 // ============================================================
 
 const THREE = window.THREE;
@@ -73,24 +72,78 @@ const firebaseConfig = {
 };
 
 // ------------------------------------------------------------
+// Helper: Request Permissions
+// ------------------------------------------------------------
+async function requestPermissions() {
+    // 1. Request Camera Permission
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: 'environment' } }
+            });
+            // Stop temporary stream so 8th Wall / XR engine can capture the camera
+            stream.getTracks().forEach(track => track.stop());
+        } catch (err) {
+            throw new Error('Camera permission was denied or camera is unavailable.');
+        }
+    }
+
+    // 2. Request iOS Motion Sensor Permission
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+            const response = await DeviceOrientationEvent.requestPermission();
+            if (response !== 'granted') {
+                throw new Error('Motion sensor permission was denied.');
+            }
+        } catch (err) {
+            throw new Error('Motion sensor permission error: ' + err.message);
+        }
+    }
+}
+
+// ------------------------------------------------------------
 // Loader helpers
 // ------------------------------------------------------------
-function loadScript(src) {
+function waitForXR8(timeoutMs = 12000) {
     return new Promise((resolve, reject) => {
-        const existing = document.querySelector(`script[src="${src}"]`);
-
-        if (existing) {
-            existing.addEventListener('load', resolve, { once: true });
-            existing.addEventListener('error', reject, { once: true });
+        if (window.XR8) {
+            resolve(window.XR8);
             return;
         }
 
-        const script = document.createElement('script');
-        script.src = src;
-        script.async = true;
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
+        const timer = setTimeout(() => {
+            reject(new Error('Timed out waiting for 8th Wall XR engine to load from CDN.'));
+        }, timeoutMs);
+
+        const onXRLoaded = () => {
+            clearTimeout(timer);
+            resolve(window.XR8);
+        };
+
+        window.addEventListener('xrloaded', onXRLoaded, { once: true });
+
+        const src = 'https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js';
+        let script = document.querySelector(`script[src="${src}"]`);
+
+        if (!script) {
+            script = document.createElement('script');
+            script.src = src;
+            script.async = true;
+            script.crossOrigin = 'anonymous';
+            script.setAttribute('data-preload-chunks', 'slam');
+            script.onerror = () => {
+                clearTimeout(timer);
+                window.removeEventListener('xrloaded', onXRLoaded);
+                reject(new Error('Failed to load 8th Wall script from CDN (Network/CORS error).'));
+            };
+            document.head.appendChild(script);
+        } else {
+            script.addEventListener('error', () => {
+                clearTimeout(timer);
+                window.removeEventListener('xrloaded', onXRLoaded);
+                reject(new Error('Failed to load 8th Wall script from CDN (Network/CORS error).'));
+            }, { once: true });
+        }
     });
 }
 
@@ -215,38 +268,42 @@ async function fetchCatalogue() {
     const groups = [];
 
     for (const category of categories) {
-        const folderRef = state.storage.ref(state.storageRef, category.folder);
-        const results = await state.storage.listAll(folderRef);
+        try {
+            const folderRef = state.storage.ref(state.storageRef, category.folder);
+            const results = await state.storage.listAll(folderRef);
 
-        const items = await Promise.all(results.items.map(async (itemRef) => {
-            const isModelFile = /\.(glb|gltf)$/i.test(itemRef.name);
-            if (!isModelFile) {
-                return null;
-            }
+            const items = await Promise.all(results.items.map(async (itemRef) => {
+                const isModelFile = /\.(glb|gltf)$/i.test(itemRef.name);
+                if (!isModelFile) {
+                    return null;
+                }
 
-            const modelUrl = await state.storage.getDownloadURL(itemRef);
-            const thumbnailName = itemRef.name.replace(/\.(glb|gltf)$/i, '.png');
-            let thumbnailUrl = '';
+                const modelUrl = await state.storage.getDownloadURL(itemRef);
+                const thumbnailName = itemRef.name.replace(/\.(glb|gltf)$/i, '.png');
+                let thumbnailUrl = '';
 
-            try {
-                const thumbRef = state.storage.ref(state.storageRef, `${category.folder}/${thumbnailName}`);
-                thumbnailUrl = await state.storage.getDownloadURL(thumbRef);
-            } catch (error) {
-                thumbnailUrl = '';
-            }
+                try {
+                    const thumbRef = state.storage.ref(state.storageRef, `${category.folder}/${thumbnailName}`);
+                    thumbnailUrl = await state.storage.getDownloadURL(thumbRef);
+                } catch (error) {
+                    thumbnailUrl = '';
+                }
 
-            return {
-                id: itemRef.fullPath,
-                category: category.folder,
-                name: itemRef.name.replace(/\.(glb|gltf)$/i, '').replace(/[_-]+/g, ' '),
-                description: `${category.label} model`,
-                modelUrl,
-                thumbnailUrl
-            };
-        }));
+                return {
+                    id: itemRef.fullPath,
+                    category: category.folder,
+                    name: itemRef.name.replace(/\.(glb|gltf)$/i, '').replace(/[_-]+/g, ' '),
+                    description: `${category.label} model`,
+                    modelUrl,
+                    thumbnailUrl
+                };
+            }));
 
-        const validItems = items.filter(Boolean);
-        groups.push({ label: category.label, items: validItems });
+            const validItems = items.filter(Boolean);
+            groups.push({ label: category.label, items: validItems });
+        } catch (catErr) {
+            console.warn(`Category ${category.label} could not be loaded:`, catErr);
+        }
     }
 
     state.catalogueGroups = groups;
@@ -279,7 +336,6 @@ function scaleModelToFit(group) {
     const scale = target / maxSize;
     group.scale.setScalar(scale);
 
-    // Normalize the model to the floor plane so it appears grounded.
     const center = new THREE.Vector3();
     box.getCenter(center);
     group.position.sub(center);
@@ -361,23 +417,18 @@ function placeSelectedModel() {
     state.placedModels.push(placed);
     showToast(`${state.selectedCatalogItem.name} placed`);
 
-    // Keep the ghost mounted for another placement by re-previewing the same item.
     previewGhost(state.selectedCatalogItem);
 }
 
 // ------------------------------------------------------------
-// 8th Wall XR bootstrap
+// 8th Wall Open Source Engine bootstrap
 // ------------------------------------------------------------
 async function bootstrapEightWall() {
-    if (!window.XR8) {
-        await loadScript('https://cdn.8thwall.com/xrweb/8thwall.xrextras.js');
-    }
+    const xr8 = await waitForXR8();
 
-    if (!window.XR8) {
-        throw new Error('8th Wall XR8 could not be loaded.');
+    if (xr8.loadChunk) {
+        await xr8.loadChunk('slam');
     }
-
-    const xr8 = window.XR8;
 
     xr8.addCameraPipelineModule({
         name: 'ar-retail-staging',
@@ -501,17 +552,32 @@ dom.placeModelBtn.addEventListener('click', () => {
 
 dom.startARBtn.addEventListener('click', async () => {
     try {
+        // 1. Explicitly request permissions on user tap
+        await requestPermissions();
+
+        // 2. Hide permission overlay & show loader
         dom.permissionOverlay.style.display = 'none';
         setLoading(true);
+
+        // 3. Initialize open-source 8th Wall XR engine
         await bootstrapEightWall();
-        await fetchCatalogue();
+
+        // 4. Fetch models from Firebase Storage
+        try {
+            await fetchCatalogue();
+        } catch (catErr) {
+            console.warn('Catalogue fetch failed:', catErr);
+        }
+
         setLoading(false);
         setScanOverlay(true);
         state.initialized = true;
     } catch (error) {
-        console.error(error);
+        const message = error instanceof Error ? error.message : 'AR initialization failed.';
+        console.error('AR Startup Error:', message, error);
         setLoading(false);
-        showToast(error.message || 'AR could not start');
+        dom.permissionOverlay.style.display = 'flex';
+        showToast(message);
     }
 });
 
@@ -520,13 +586,10 @@ dom.startARBtn.addEventListener('click', async () => {
 // ------------------------------------------------------------
 (async function init() {
     setLoading(false);
-    setScanOverlay(true);
-
     try {
         await initializeFirebase();
         console.info('Firebase initialized:', state.firebaseApp.name);
     } catch (error) {
-        console.warn('Firebase config is missing or invalid:', error);
-        showToast('Add a valid Firebase config to window.__FIREBASE_CONFIG__.');
+        console.warn('Firebase config issue:', error);
     }
 })();
