@@ -113,32 +113,27 @@ function classifyPlaneOrientation(rotation) {
     return 'angled';
 }
 
+// Picks the best hit test result for the current frame, preferring — in
+// order — a horizontal plane (floor/tabletop), then a vertical plane (wall),
+// then any other classified plane. Returns null if no classified plane is
+// present. FEATURE_POINT is intentionally never used as a fallback: it's a
+// single tracked visual point with no real orientation of its own, so any
+// rotation attached to it would have to be invented rather than measured —
+// which is exactly what causes models to place with the wrong orientation
+// or on a surface that doesn't actually exist yet.
 function pickBestHit(hitTestResults) {
     if (!hitTestResults || hitTestResults.length === 0) return null;
 
-    // 1. Prioritize estimated surface planes
     const planeHits = hitTestResults.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE');
-    if (planeHits.length > 0) {
-        const horizontal = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
-        if (horizontal) return horizontal;
+    if (planeHits.length === 0) return null;
 
-        const vertical = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'vertical');
-        if (vertical) return vertical;
+    const horizontal = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
+    if (horizontal) return horizontal;
 
-        return planeHits[0];
-    }
+    const vertical = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'vertical');
+    if (vertical) return vertical;
 
-    // 2. Fallback to feature points for rapid scanning response
-    const featureHits = hitTestResults.filter((h) => h.type === 'FEATURE_POINT');
-    if (featureHits.length > 0) {
-        const hit = featureHits[0];
-        if (!hit.rotation) {
-            hit.rotation = { x: 0, y: 0, z: 0, w: 1 };
-        }
-        return hit;
-    }
-
-    return null;
+    return planeHits[0];
 }
 
 function selectPlacedModel(entry) {
@@ -364,9 +359,13 @@ const arStagingPipelineModule = () => {
                     planeIndicator.quaternion.copy(reticle.quaternion);
                 }
 
-                // Dynamically lock shadow catcher to real-world surface level
-                if (shadowPlane) {
-                    shadowPlane.position.y = p.y;
+                // Keep the floor's contact-shadow catcher aligned with the
+                // live detected floor height — but only on a horizontal hit.
+                // A vertical (wall) hit has no bearing on where the floor is,
+                // so syncing to it unconditionally would yank the shadow
+                // plane up to wall height while aiming at a wall.
+                if (shadowPlane && classifyPlaneOrientation(r) === 'horizontal') {
+                    shadowPlane.position.y = p.y - 0.001; // tiny offset avoids z-fighting with the real floor
                 }
 
                 if (!surfaceLocked) {
