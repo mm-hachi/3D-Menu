@@ -2,9 +2,6 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-// 8th Wall's XR8.Threejs.pipelineModule() looks for window.THREE.
-// ES module imports are scoped and don't auto-expose globals, so we
-// must attach it manually before the XR8 pipeline is initialized.
 window.THREE = THREE;
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
@@ -18,12 +15,12 @@ import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebas
 let scene, camera, renderer;
 let reticle;
 let selectionBoxHelper;
+let planeIndicator;
 
-const spawnedModels = []; // [{ mesh, price, glbUrl }]
-let selectedModelData = null; // Catalog asset data: { glbUrl, price }
-let selectedPlacedEntry = null; // Placed 3D object: { mesh, price, glbUrl }
+const spawnedModels = [];
+let selectedModelData = null;
+let selectedPlacedEntry = null;
 
-// Enable Three.js network cache
 THREE.Cache.enabled = true;
 
 const dracoLoader = new DRACOLoader();
@@ -35,7 +32,6 @@ gltfLoader.setDRACOLoader(dracoLoader);
 
 const modelCache = {};
 
-// Background preload queue for instant placement
 const PRELOAD_CONCURRENCY = 2;
 let activePreloads = 0;
 const preloadQueue = [];
@@ -83,17 +79,67 @@ function pumpPreloadQueue() {
     }
 }
 
-// CSS Reticle — positioned in DOM, always pixel-perfect at screen center
 const cssReticle = document.getElementById('reticle');
-let hasHitSurface = false; // tracks first surface detection to show reticle
+const hintEl = document.getElementById('placement-hint');
+const placeBtn = document.getElementById('place-btn');
 
-// Raycasting for Model Selection
+const MISS_TOLERANCE_FRAMES = 6;
+let missStreak = 0;
+let surfaceLocked = false;
+const SCANNING_HINT = 'Move your device slowly to scan for a surface…';
+const READY_HINT = "Aim at a surface and tap 'Place Model'";
+
+const TAP_MOVE_THRESHOLD = 10;
+
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. PLACED MODEL SELECTION & HIGHLIGHTING
+// 2. HIT-TESTING & PLACED MODEL MANIPULATION
 // ─────────────────────────────────────────────────────────────────────────────
+
+const _upVec = new THREE.Vector3();
+const _worldUp = new THREE.Vector3(0, 1, 0);
+const _reusableQuat = new THREE.Quaternion();
+
+function classifyPlaneOrientation(rotation) {
+    if (!rotation || typeof rotation.x !== 'number') return 'horizontal';
+
+    const q = _reusableQuat.set(rotation.x, rotation.y, rotation.z, rotation.w);
+    _upVec.set(0, 1, 0).applyQuaternion(q);
+    const alignment = Math.abs(_upVec.dot(_worldUp));
+    if (alignment > 0.8) return 'horizontal';
+    if (alignment < 0.35) return 'vertical';
+    return 'angled';
+}
+
+function pickBestHit(hitTestResults) {
+    if (!hitTestResults || hitTestResults.length === 0) return null;
+
+    // 1. Prioritize estimated surface planes
+    const planeHits = hitTestResults.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE');
+    if (planeHits.length > 0) {
+        const horizontal = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
+        if (horizontal) return horizontal;
+
+        const vertical = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'vertical');
+        if (vertical) return vertical;
+
+        return planeHits[0];
+    }
+
+    // 2. Fallback to feature points for rapid scanning response
+    const featureHits = hitTestResults.filter((h) => h.type === 'FEATURE_POINT');
+    if (featureHits.length > 0) {
+        const hit = featureHits[0];
+        if (!hit.rotation) {
+            hit.rotation = { x: 0, y: 0, z: 0, w: 1 };
+        }
+        return hit;
+    }
+
+    return null;
+}
 
 function selectPlacedModel(entry) {
     selectedPlacedEntry = entry;
@@ -133,8 +179,26 @@ function handleCanvasTap(clientX, clientY) {
         }
     }
 
-    // Tapped open space -> deselect placed model
     selectPlacedModel(null);
+}
+
+function moveSelectedModel(clientX, clientY) {
+    if (!selectedPlacedEntry || !window.XR8 || !window.XR8.XrController) return;
+
+    const nx = clientX / window.innerWidth;
+    const ny = clientY / window.innerHeight;
+    const results = XR8.XrController.hitTest(nx, ny, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
+    const hit = pickBestHit(results);
+    if (!hit) return;
+
+    selectedPlacedEntry.mesh.position.set(hit.position.x, hit.position.y, hit.position.z);
+    if (selectionBoxHelper.visible) {
+        selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
+    }
+}
+
+function angleBetweenTouches(touches) {
+    return Math.atan2(touches[1].clientY - touches[0].clientY, touches[1].clientX - touches[0].clientX);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -144,10 +208,18 @@ function handleCanvasTap(clientX, clientY) {
 const arStagingPipelineModule = () => {
     let touchStartX = 0;
     let touchStartY = 0;
+    let shadowPlane;
 
     return {
         name: 'ar-staging-logic',
         onStart: ({ canvas }) => {
+            if (!XR8.Threejs || !XR8.Threejs.xrScene) {
+                console.error('8th Wall Three.js pipeline not available.');
+                hintEl.textContent = 'AR initialization failed. Please reload.';
+                hintEl.classList.add('show-hint');
+                return;
+            }
+
             const { scene: xrScene, camera: xrCamera, renderer: xrRenderer } = XR8.Threejs.xrScene();
             scene = xrScene;
             camera = xrCamera;
@@ -157,76 +229,162 @@ const arStagingPipelineModule = () => {
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
             }
 
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
             // Scene Lighting
             const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.5);
             light.position.set(0.5, 1, 0.25);
             scene.add(light);
 
-            const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
             dirLight.position.set(1, 4, 2);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            dirLight.shadow.camera.near = 0.1;
+            dirLight.shadow.camera.far = 10;
+            dirLight.shadow.bias = -0.001;
             scene.add(dirLight);
 
-            // We use a CSS reticle (always screen-center) instead of a 3D mesh.
-            // A hidden THREE.Object3D acts as the placement anchor for hit test results.
             reticle = new THREE.Object3D();
             scene.add(reticle);
 
-            // Add selection box helper for highlighting 3D models
+            const planeIndicatorGeo = new THREE.BoxGeometry(0.5, 0.01, 0.5);
+            const planeIndicatorMat = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.16,
+                depthWrite: false,
+            });
+            planeIndicator = new THREE.Mesh(planeIndicatorGeo, planeIndicatorMat);
+            planeIndicator.visible = false;
+            scene.add(planeIndicator);
+
             selectionBoxHelper = new THREE.BoxHelper(new THREE.Mesh(), 0x007aff);
             selectionBoxHelper.visible = false;
             scene.add(selectionBoxHelper);
 
-            // Pointer/Touch Listeners for selection & tap-to-place
+            // Contact Shadow Catcher Plane
+            shadowPlane = new THREE.Mesh(
+                new THREE.PlaneGeometry(20, 20),
+                new THREE.ShadowMaterial({ opacity: 0.25 })
+            );
+            shadowPlane.rotation.x = -Math.PI / 2;
+            shadowPlane.receiveShadow = true;
+            scene.add(shadowPlane);
+
+            let isDragging = false;
+            let isRotating = false;
+            let rotateStartAngle = 0;
+            let rotateStartY = 0;
+
             canvas.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 1) {
                     touchStartX = e.touches[0].clientX;
                     touchStartY = e.touches[0].clientY;
+                    isDragging = false;
+                    isRotating = false;
+                } else if (e.touches.length === 2 && selectedPlacedEntry) {
+                    isRotating = true;
+                    isDragging = false;
+                    rotateStartAngle = angleBetweenTouches(e.touches);
+                    rotateStartY = selectedPlacedEntry.mesh.rotation.y;
+                }
+            }, { passive: true });
+
+            canvas.addEventListener('touchmove', (e) => {
+                if (isRotating && e.touches.length === 2 && selectedPlacedEntry) {
+                    const currentAngle = angleBetweenTouches(e.touches);
+                    selectedPlacedEntry.mesh.rotation.y = rotateStartY + (currentAngle - rotateStartAngle);
+                    if (selectionBoxHelper.visible) {
+                        selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
+                    }
+                    return;
+                }
+
+                if (e.touches.length === 1 && selectedPlacedEntry) {
+                    const touch = e.touches[0];
+                    if (!isDragging) {
+                        const dx = touch.clientX - touchStartX;
+                        const dy = touch.clientY - touchStartY;
+                        if (Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD) {
+                            isDragging = true;
+                        }
+                    }
+                    if (isDragging) {
+                        moveSelectedModel(touch.clientX, touch.clientY);
+                    }
                 }
             }, { passive: true });
 
             canvas.addEventListener('touchend', (e) => {
+                if (isRotating) {
+                    isRotating = false;
+                    return;
+                }
+                if (isDragging) {
+                    isDragging = false;
+                    return;
+                }
                 if (e.changedTouches.length === 1) {
                     const endX = e.changedTouches[0].clientX;
                     const endY = e.changedTouches[0].clientY;
 
-                    // Only count as a tap if touch didn't drag significantly
-                    if (Math.hypot(endX - touchStartX, endY - touchStartY) < 10) {
+                    if (Math.hypot(endX - touchStartX, endY - touchStartY) < TAP_MOVE_THRESHOLD) {
                         handleCanvasTap(endX, endY);
                     }
                 }
             });
 
             canvas.addEventListener('click', (e) => {
-                // Desktop / Mouse fallback
                 handleCanvasTap(e.clientX, e.clientY);
             });
+
+            updatePlacementAvailability(false);
         },
         onUpdate: () => {
             if (!scene) return;
 
-            // Perform hit test straight out from viewport center (0.5, 0.5)
             const hitTestResults = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
+            const hit = pickBestHit(hitTestResults);
 
-            if (hitTestResults && hitTestResults.length > 0) {
-                const hit = hitTestResults[0];
+            if (hit) {
+                missStreak = 0;
 
-                // Update invisible anchor so placement uses the correct world position
                 const p = hit.position;
                 const r = hit.rotation;
+
+                // Sync 3D reticle to the hit surface
                 reticle.position.set(p.x, p.y, p.z);
                 reticle.quaternion.set(r.x, r.y, r.z, r.w);
 
-                // Show CSS reticle on first surface lock
-                if (!hasHitSurface) {
-                    hasHitSurface = true;
-                    cssReticle.style.display = 'flex';
+                if (planeIndicator) {
+                    planeIndicator.position.copy(reticle.position);
+                    planeIndicator.quaternion.copy(reticle.quaternion);
+                }
+
+                // Dynamically lock shadow catcher to real-world surface level
+                if (shadowPlane) {
+                    shadowPlane.position.y = p.y;
+                }
+
+                if (!surfaceLocked) {
+                    surfaceLocked = true;
+                    cssReticle.classList.add('locked');
+                    if (planeIndicator) planeIndicator.visible = true;
+                    updatePlacementAvailability(true);
                 }
             } else {
-                // Dim but keep visible so it doesn't flash in/out constantly
-                cssReticle.style.opacity = hasHitSurface ? '0.35' : '0';
+                missStreak += 1;
+                if (missStreak > MISS_TOLERANCE_FRAMES && surfaceLocked) {
+                    surfaceLocked = false;
+                    cssReticle.classList.remove('locked');
+                    if (planeIndicator) planeIndicator.visible = false;
+                    updatePlacementAvailability(false);
+                }
             }
 
-            // Keep selection bounding box aligned with selected object
             if (selectedPlacedEntry && selectionBoxHelper.visible) {
                 selectionBoxHelper.setFromObject(selectedPlacedEntry.mesh);
             }
@@ -236,14 +394,14 @@ const arStagingPipelineModule = () => {
 
 const onxrloaded = () => {
     XR8.addCameraPipelineModules([
-        XR8.GlTextureRenderer.pipelineModule(),       // Camera feed renderer
-        XR8.Threejs.pipelineModule(),                 // Three.js sync
-        XR8.XrController.pipelineModule(),            // SLAM tracking engine
-        window.XRExtras.AlmostThere.pipelineModule(), // Loading UI
+        XR8.GlTextureRenderer.pipelineModule(),
+        XR8.Threejs.pipelineModule(),
+        XR8.XrController.pipelineModule(),
+        window.XRExtras.AlmostThere.pipelineModule(),
         window.XRExtras.FullWindowCanvas.pipelineModule(),
         window.XRExtras.Loading.pipelineModule(),
         window.XRExtras.RuntimeError.pipelineModule(),
-        arStagingPipelineModule(),                    // App Logic
+        arStagingPipelineModule(),
     ]);
 
     XR8.run({ canvas: document.getElementById('camera-canvas') });
@@ -264,7 +422,16 @@ function updateBudget() {
     document.getElementById('budget-value').textContent = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Hamburger Drawer Toggle
+function updatePlacementAvailability(ready) {
+    placeBtn.disabled = !ready;
+    placeBtn.style.opacity = ready ? '1' : '0.4';
+    placeBtn.style.pointerEvents = ready ? 'auto' : 'none';
+
+    if (selectedModelData) {
+        hintEl.textContent = ready ? READY_HINT : SCANNING_HINT;
+    }
+}
+
 const catalogDrawer = document.getElementById('catalog-drawer');
 const hamburgerBtn = document.getElementById('hamburger-btn');
 const closeDrawerBtn = document.getElementById('close-drawer-btn');
@@ -282,15 +449,41 @@ function toggleDrawer(open) {
 hamburgerBtn.addEventListener('click', () => toggleDrawer());
 closeDrawerBtn.addEventListener('click', () => toggleDrawer(false));
 
-// Clear All Models
+function deepCloneModel(source) {
+    const clone = source.clone(true);
+    clone.traverse((node) => {
+        if (node.isMesh) {
+            if (node.geometry) node.geometry = node.geometry.clone();
+            if (Array.isArray(node.material)) {
+                node.material = node.material.map(m => m.clone());
+            } else if (node.material) {
+                node.material = node.material.clone();
+            }
+        }
+    });
+    return clone;
+}
+
+function disposeHierarchy(root) {
+    root.traverse((node) => {
+        if (node.isMesh) {
+            node.geometry?.dispose();
+            const mats = Array.isArray(node.material) ? node.material : [node.material];
+            mats.forEach(m => m?.dispose());
+        }
+    });
+}
+
 document.getElementById('clear-btn').addEventListener('click', () => {
     selectPlacedModel(null);
-    spawnedModels.forEach(entry => scene.remove(entry.mesh));
+    spawnedModels.forEach(entry => {
+        scene.remove(entry.mesh);
+        disposeHierarchy(entry.mesh);
+    });
     spawnedModels.length = 0;
     updateBudget();
 });
 
-// Dynamic Delete Button Action
 document.getElementById('delete-selected-btn').addEventListener('click', () => {
     if (!selectedPlacedEntry) return;
 
@@ -298,13 +491,7 @@ document.getElementById('delete-selected-btn').addEventListener('click', () => {
     selectPlacedModel(null);
 
     scene.remove(entryToDelete.mesh);
-    entryToDelete.mesh.traverse((node) => {
-        if (node.isMesh) {
-            node.geometry?.dispose();
-            const mats = Array.isArray(node.material) ? node.material : [node.material];
-            mats.forEach(m => m?.dispose());
-        }
-    });
+    disposeHierarchy(entryToDelete.mesh);
 
     const idx = spawnedModels.indexOf(entryToDelete);
     if (idx !== -1) {
@@ -313,10 +500,8 @@ document.getElementById('delete-selected-btn').addEventListener('click', () => {
     updateBudget();
 });
 
-// Dynamic Place Button Action
-const placeBtn = document.getElementById('place-btn');
 placeBtn.addEventListener('click', () => {
-    if (selectedModelData) {
+    if (selectedModelData && surfaceLocked) {
         spawnModelAtReticle(selectedModelData);
     }
 });
@@ -324,40 +509,58 @@ placeBtn.addEventListener('click', () => {
 function spawnModelAtReticle(modelData) {
     const glbUrl = modelData.glbUrl;
 
-    // Flash the CSS reticle white as placement feedback
     cssReticle.classList.add('flash');
     setTimeout(() => cssReticle.classList.remove('flash'), 200);
 
-    // Snapshot the anchor's world position at the moment of the tap
     const placementPosition = reticle.position.clone();
     const placementQuaternion = reticle.quaternion.clone();
 
     const templatePromise = modelCache[glbUrl] || preloadModel(glbUrl, { priority: true });
 
     templatePromise
-        .then((template) => addMeshToScene(template.clone(), modelData, placementPosition, placementQuaternion))
+        .then((template) => {
+            const modelRoot = deepCloneModel(template);
+            addMeshToScene(modelRoot, modelData, placementPosition, placementQuaternion);
+        })
         .catch((err) => console.error('[spawnModel] Load error:', err));
 }
 
 function addMeshToScene(mesh, modelData, placementPosition, placementQuaternion) {
-    mesh.position.copy(placementPosition || reticle.position);
+    const wrapper = new THREE.Group();
+    wrapper.add(mesh);
 
-    // Extract only Y rotation so model stays upright on the floor plane
-    const euler = new THREE.Euler().setFromQuaternion(placementQuaternion || reticle.quaternion, 'YXZ');
-    mesh.rotation.y = euler.y;
+    const box = new THREE.Box3().setFromObject(mesh);
 
-    scene.add(mesh);
-    const entry = { mesh, price: modelData.price, glbUrl: modelData.glbUrl };
-    spawnedModels.push(entry);
-
-    // Hide the placement hint permanently after first model is placed
-    if (spawnedModels.length === 1) {
-        const hint = document.getElementById('placement-hint');
-        hint.classList.remove('show-hint');
-        hint.style.display = 'none';
+    // Pivot correction: align bottom-center of bounding box to origin
+    if (!box.isEmpty()) {
+        const centerX = (box.min.x + box.max.x) / 2;
+        const centerZ = (box.min.z + box.max.z) / 2;
+        mesh.position.x -= centerX;
+        mesh.position.z -= centerZ;
+        mesh.position.y -= box.min.y;
     }
 
-    // Automatically select newly placed model
+    wrapper.position.copy(placementPosition || reticle.position);
+
+    const euler = new THREE.Euler().setFromQuaternion(placementQuaternion || reticle.quaternion, 'YXZ');
+    wrapper.rotation.y = euler.y;
+
+    mesh.traverse((node) => {
+        if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+        }
+    });
+
+    scene.add(wrapper);
+    const entry = { mesh: wrapper, price: modelData.price, glbUrl: modelData.glbUrl };
+    spawnedModels.push(entry);
+
+    if (spawnedModels.length === 1) {
+        hintEl.classList.remove('show-hint');
+        hintEl.style.display = 'none';
+    }
+
     selectPlacedModel(entry);
     updateBudget();
 }
@@ -399,9 +602,9 @@ function selectCatalogModel(card, assetData) {
     card.classList.add('selected');
     selectedModelData = assetData;
 
-    // Show place button & placement guidance hint
     placeBtn.style.display = 'inline-flex';
-    document.getElementById('placement-hint').classList.add('show-hint');
+    hintEl.classList.add('show-hint');
+    updatePlacementAvailability(surfaceLocked);
 }
 
 function renderCatalog(category) {
