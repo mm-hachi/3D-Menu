@@ -1,690 +1,555 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-
-window.THREE = THREE;
-
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
 import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 1. STATE & LOADERS
-// ─────────────────────────────────────────────────────────────────────────────
+window.THREE = THREE;
 
-let scene, camera, renderer;
-let reticle;
-let planeIndicator;
+/**
+ * 47 | XLVII - Spatial Staging Environment
+ * Core Application Architecture
+ */
 
-const spawnedModels = [];
-let selectedModelData = null;
-let selectedPlacedEntry = null;
+class FirebaseService {
+    constructor(uiManager, assetLoader) {
+        this.uiManager = uiManager;
+        this.assetLoader = assetLoader;
 
-THREE.Cache.enabled = true;
-
-const dracoLoader = new DRACOLoader();
-dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
-dracoLoader.preload();
-
-const gltfLoader = new GLTFLoader();
-gltfLoader.setDRACOLoader(dracoLoader);
-
-const modelCache = {};
-
-const PRELOAD_CONCURRENCY = 2;
-let activePreloads = 0;
-const preloadQueue = [];
-
-function preloadModel(glbUrl, { priority = false } = {}) {
-    if (!glbUrl || modelCache[glbUrl]) return modelCache[glbUrl];
-
-    const promise = new Promise((resolve, reject) => {
-        const job = () => {
-            activePreloads++;
-            gltfLoader.load(
-                glbUrl,
-                (gltf) => {
-                    activePreloads--;
-                    resolve(gltf.scene);
-                    pumpPreloadQueue();
-                },
-                undefined,
-                (err) => {
-                    activePreloads--;
-                    console.error('[preloadModel] Load error:', err);
-                    delete modelCache[glbUrl];
-                    reject(err);
-                    pumpPreloadQueue();
-                }
-            );
+        // Retaining technical keys, but branding reflects 47/XLVII
+        this.config = {
+            apiKey: 'AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY',
+            authDomain: 'shot47-database.firebaseapp.com',
+            projectId: 'shot47-database',
+            storageBucket: 'shot47-database.firebasestorage.app',
+            messagingSenderId: '77237094269',
+            appId: '1:77237094269:web:a90a6c6239cb66e3102e14',
         };
 
-        if (priority) {
-            preloadQueue.unshift(job);
-        } else {
-            preloadQueue.push(job);
-        }
-    });
+        this.app = initializeApp(this.config);
+        this.db = getFirestore(this.app);
+        this.storage = getStorage(this.app);
 
-    modelCache[glbUrl] = promise;
-    pumpPreloadQueue();
-    return promise;
-}
+        this.registry = { furniture: [], carpets: [], decor: [] };
+        this.collectionMap = {
+            furniture: 'furniture_models',
+            carpets: 'carpet_models',
+            decor: 'decor_models',
+        };
+    }
 
-function pumpPreloadQueue() {
-    while (activePreloads < PRELOAD_CONCURRENCY && preloadQueue.length > 0) {
-        const job = preloadQueue.shift();
-        job();
+    async resolveUrl(pathOrUrl, folder) {
+        if (!pathOrUrl) return null;
+        if (pathOrUrl.startsWith('http')) return pathOrUrl;
+        return getDownloadURL(ref(this.storage, `${folder}/${pathOrUrl}`));
+    }
+
+    initCatalogSync(activeCategory) {
+        Object.entries(this.collectionMap).forEach(([category, collectionName]) => {
+            onSnapshot(collection(this.db, collectionName), (snapshot) => {
+                this.registry[category] = [];
+                snapshot.forEach((doc) => {
+                    const d = doc.data();
+                    if (d.glb) {
+                        this.registry[category].push({
+                            title: d.title ?? 'Unnamed',
+                            glbName: d.glb,
+                            imgName: d.img ?? null,
+                            price: d.price ?? 0.00
+                        });
+                    }
+                });
+                if (category === activeCategory) {
+                    this.uiManager.renderCatalog(this.registry[category], this);
+                }
+            });
+        });
     }
 }
 
-const cssReticle = document.getElementById('reticle');
-const hintEl = document.getElementById('placement-hint');
-const placeBtn = document.getElementById('place-btn');
+class AssetLoader {
+    constructor() {
+        this.cache = {};
+        this.dracoLoader = new DRACOLoader();
+        this.dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+        this.dracoLoader.preload();
 
-const MISS_TOLERANCE_FRAMES = 6;
-let missStreak = 0;
-let surfaceLocked = false;
-const SCANNING_HINT = 'Move your device slowly to scan for a surface…';
-const READY_HINT = "Aim at a surface and tap 'Place Model'";
+        this.gltfLoader = new GLTFLoader();
+        this.gltfLoader.setDRACOLoader(this.dracoLoader);
+    }
 
-const TAP_MOVE_THRESHOLD = 10;
+    async preloadModel(glbUrl) {
+        if (!glbUrl) return null;
+        if (this.cache[glbUrl]) return this.cache[glbUrl];
 
-const raycaster = new THREE.Raycaster();
-const pointer = new THREE.Vector2();
+        const loadPromise = new Promise((resolve, reject) => {
+            this.gltfLoader.load(glbUrl, (gltf) => resolve(gltf.scene), undefined, reject);
+        });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 2. PLACED MODEL SELECTION & HIGHLIGHTING
-// ─────────────────────────────────────────────────────────────────────────────
+        this.cache[glbUrl] = loadPromise;
+        return loadPromise;
+    }
 
-function selectPlacedModel(entry) {
-    // Hide all selection boxes first
-    spawnedModels.forEach(e => {
-        const box = e.mesh.getObjectByName('selectionBox');
-        if (box) box.visible = false;
-    });
-
-    selectedPlacedEntry = entry;
-    const deleteBtn = document.getElementById('delete-selected-btn');
-
-    if (entry) {
-        const box = entry.mesh.getObjectByName('selectionBox');
-        if (box) box.visible = true;
-        deleteBtn.style.display = 'inline-flex';
-    } else {
-        deleteBtn.style.display = 'none';
+    deepClone(source) {
+        const clone = source.clone(true);
+        clone.traverse((node) => {
+            if (node.isMesh) {
+                if (node.geometry) node.geometry = node.geometry.clone();
+                if (Array.isArray(node.material)) {
+                    node.material = node.material.map(m => m.clone());
+                } else if (node.material) {
+                    node.material = node.material.clone();
+                }
+            }
+        });
+        return clone;
     }
 }
 
-function handleCanvasTap(clientX, clientY) {
-    if (!camera || !scene) return;
+class UIManager {
+    constructor(appContext) {
+        this.appContext = appContext;
+        this.activeCategory = 'furniture';
+        this.selectedModelData = null;
 
-    pointer.x = (clientX / window.innerWidth) * 2 - 1;
-    pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+        this.elements = {
+            hint: document.getElementById('placement-hint'),
+            placeBtn: document.getElementById('place-btn'),
+            budget: document.getElementById('budget-value'),
+            catalogList: document.getElementById('catalog-list'),
+            drawer: document.getElementById('catalog-drawer'),
+            hamburger: document.getElementById('hamburger-btn'),
+            closeDrawer: document.getElementById('close-drawer-btn'),
+            clearBtn: document.getElementById('clear-btn'),
+            deleteBtn: document.getElementById('delete-selected-btn'),
+            tabs: document.querySelectorAll('.tab-btn'),
+            reticle: document.getElementById('reticle')
+        };
 
-    raycaster.setFromCamera(pointer, camera);
+        this.bindEvents();
+    }
 
-    const targetMeshes = spawnedModels.map(item => item.mesh);
-    const intersects = raycaster.intersectObjects(targetMeshes, true);
+    bindEvents() {
+        this.elements.hamburger.addEventListener('click', () => this.elements.drawer.classList.remove('collapsed'));
+        this.elements.closeDrawer.addEventListener('click', () => this.elements.drawer.classList.add('collapsed'));
 
-    if (intersects.length > 0) {
-        let topObj = intersects[0].object;
-        while (topObj.parent && topObj.parent !== scene) {
-            topObj = topObj.parent;
+        this.elements.tabs.forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                this.elements.tabs.forEach(t => t.classList.remove('active'));
+                e.currentTarget.classList.add('active');
+                this.activeCategory = e.currentTarget.dataset.category;
+                this.renderCatalog(this.appContext.firebase.registry[this.activeCategory], this.appContext.firebase);
+            });
+        });
+
+        this.elements.clearBtn.addEventListener('click', () => this.appContext.arScene.clearAllModels());
+        this.elements.deleteBtn.addEventListener('click', () => this.appContext.arScene.deleteSelectedModel());
+        this.elements.placeBtn.addEventListener('click', () => {
+            if (this.selectedModelData && this.appContext.arScene.surfaceLocked) {
+                this.appContext.arScene.spawnModel(this.selectedModelData);
+            }
+        });
+    }
+
+    updateBudget(models) {
+        const total = models.reduce((sum, item) => sum + (item.price || 0), 0);
+        this.elements.budget.textContent = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    updatePlacementAvailability(isLocked) {
+        this.elements.placeBtn.disabled = !isLocked;
+        this.elements.placeBtn.style.opacity = isLocked ? '1' : '0.4';
+        this.elements.placeBtn.style.pointerEvents = isLocked ? 'auto' : 'none';
+
+        if (this.selectedModelData) {
+            this.elements.hint.textContent = isLocked ? "Aim at a surface and tap 'Place Model'" : 'Move your device slowly to scan...';
         }
+    }
 
-        const matchedEntry = spawnedModels.find(e => e.mesh === topObj);
-        if (matchedEntry) {
-            selectPlacedModel(matchedEntry);
+    toggleDeleteButton(show) {
+        this.elements.deleteBtn.style.display = show ? 'inline-flex' : 'none';
+    }
+
+    flashReticle() {
+        this.elements.reticle.classList.add('flash');
+        setTimeout(() => this.elements.reticle.classList.remove('flash'), 200);
+    }
+
+    renderCatalog(assets, firebaseService) {
+        this.elements.catalogList.innerHTML = '';
+        if (!assets || assets.length === 0) {
+            this.elements.catalogList.innerHTML = '<div class="empty-notice">Updating digital catalog…</div>';
             return;
         }
-    }
 
-    selectPlacedModel(null);
-}
+        assets.forEach((asset, index) => {
+            const card = document.createElement('div');
+            card.className = 'catalog-item state-loading';
+            card.innerHTML = `
+                <div class="thumb-wrapper"><img class="catalog-thumb" alt="${asset.title}" /></div>
+                <div class="card-meta"><span>${asset.title}</span></div>
+            `;
+            this.elements.catalogList.appendChild(card);
 
-function moveSelectedModel(clientX, clientY) {
-    if (!selectedPlacedEntry || !window.XR8 || !window.XR8.XrController) return;
-
-    const nx = clientX / window.innerWidth;
-    const ny = clientY / window.innerHeight;
-    const results = XR8.XrController.hitTest(nx, ny, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
-    const hit = pickBestHit(results);
-    if (!hit) return;
-
-    selectedPlacedEntry.mesh.position.set(hit.position.x, hit.position.y, hit.position.z);
-}
-
-function angleBetweenTouches(touches) {
-    return Math.atan2(touches[1].clientY - touches[0].clientY, touches[1].clientX - touches[0].clientX);
-}
-
-const _upVec = new THREE.Vector3();
-const _worldUp = new THREE.Vector3(0, 1, 0);
-const _reusableQuat = new THREE.Quaternion();
-
-function classifyPlaneOrientation(rotation) {
-    if (!rotation || typeof rotation.x !== 'number') return 'horizontal';
-
-    const q = _reusableQuat.set(rotation.x, rotation.y, rotation.z, rotation.w);
-    _upVec.set(0, 1, 0).applyQuaternion(q);
-    const alignment = Math.abs(_upVec.dot(_worldUp));
-
-    if (alignment > 0.85) return 'horizontal';
-    return 'non-horizontal';
-}
-
-function pickBestHit(hitTestResults) {
-    const planeHits = hitTestResults?.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE') ?? [];
-    if (planeHits.length > 0) {
-        const horizontalHit = planeHits.find((h) => classifyPlaneOrientation(h.rotation) === 'horizontal');
-        if (horizontalHit) return horizontalHit;
-        return planeHits[0];
-    }
-
-    const featureHits = hitTestResults?.filter((h) => h.type === 'FEATURE_POINT') ?? [];
-    if (featureHits.length > 0) {
-        const hit = featureHits[0];
-        if (!hit.rotation) {
-            hit.rotation = { x: 0, y: 0, z: 0, w: 1 };
-        }
-        return hit;
-    }
-
-    return null;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 3. 8TH WALL PIPELINE LOGIC (SLAM ENGINE)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const arStagingPipelineModule = () => {
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let groundPlane; // Module-scoped to track SLAM height dynamically
-
-    return {
-        name: 'ar-staging-logic',
-        onStart: ({ canvas }) => {
-            if (!XR8.Threejs || !XR8.Threejs.xrScene) {
-                console.error('8th Wall Three.js pipeline not available.');
-                hintEl.textContent = 'AR initialization failed. Please reload.';
-                hintEl.classList.add('show-hint');
-                return;
+            const img = card.querySelector('.catalog-thumb');
+            if (asset.imgName) {
+                firebaseService.resolveUrl(asset.imgName, 'models/thumbnails').then(url => img.src = url);
             }
 
-            const { scene: xrScene, camera: xrCamera, renderer: xrRenderer } = XR8.Threejs.xrScene();
-            scene = xrScene;
-            camera = xrCamera;
-            renderer = xrRenderer;
-
-            if (renderer && renderer.setPixelRatio) {
-                renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-            }
-
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-            const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.5);
-            light.position.set(0.5, 1, 0.25);
-            scene.add(light);
-
-            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-            dirLight.position.set(1, 4, 2);
-            dirLight.castShadow = true;
-            dirLight.shadow.mapSize.width = 1024;
-            dirLight.shadow.mapSize.height = 1024;
-            dirLight.shadow.camera.near = 0.1;
-            dirLight.shadow.camera.far = 10;
-            dirLight.shadow.bias = -0.001;
-            scene.add(dirLight);
-
-            reticle = new THREE.Object3D();
-            scene.add(reticle);
-
-            const planeIndicatorGeo = new THREE.BoxGeometry(0.5, 0.01, 0.5);
-            const planeIndicatorMat = new THREE.MeshBasicMaterial({
-                color: 0xffffff,
-                transparent: true,
-                opacity: 0.16,
-                depthWrite: false,
-            });
-            planeIndicator = new THREE.Mesh(planeIndicatorGeo, planeIndicatorMat);
-            planeIndicator.visible = false;
-            scene.add(planeIndicator);
-
-            // Dynamic floor tracking shadow plane
-            groundPlane = new THREE.Mesh(
-                new THREE.PlaneGeometry(100, 100),
-                new THREE.ShadowMaterial({ opacity: 0.35 })
-            );
-            groundPlane.rotation.x = -Math.PI / 2;
-            groundPlane.receiveShadow = true;
-            scene.add(groundPlane);
-
-            let isDragging = false;
-            let isRotating = false;
-            let rotateStartAngle = 0;
-            let rotateStartY = 0;
-
-            canvas.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 1) {
-                    touchStartX = e.touches[0].clientX;
-                    touchStartY = e.touches[0].clientY;
-                    isDragging = false;
-                    isRotating = false;
-                } else if (e.touches.length === 2 && selectedPlacedEntry) {
-                    isRotating = true;
-                    isDragging = false;
-                    rotateStartAngle = angleBetweenTouches(e.touches);
-                    rotateStartY = selectedPlacedEntry.mesh.rotation.y;
-                }
-            }, { passive: true });
-
-            canvas.addEventListener('touchmove', (e) => {
-                if (isRotating && e.touches.length === 2 && selectedPlacedEntry) {
-                    const currentAngle = angleBetweenTouches(e.touches);
-                    selectedPlacedEntry.mesh.rotation.y = rotateStartY + (currentAngle - rotateStartAngle);
-                    return;
-                }
-
-                if (e.touches.length === 1 && selectedPlacedEntry) {
-                    const touch = e.touches[0];
-                    if (!isDragging) {
-                        const dx = touch.clientX - touchStartX;
-                        const dy = touch.clientY - touchStartY;
-                        if (Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD) {
-                            isDragging = true;
-                        }
-                    }
-                    if (isDragging) {
-                        moveSelectedModel(touch.clientX, touch.clientY);
-                    }
-                }
-            }, { passive: true });
-
-            canvas.addEventListener('touchend', (e) => {
-                if (isRotating) {
-                    isRotating = false;
-                    return;
-                }
-                if (isDragging) {
-                    isDragging = false;
-                    return;
-                }
-                if (e.changedTouches.length === 1) {
-                    const endX = e.changedTouches[0].clientX;
-                    const endY = e.changedTouches[0].clientY;
-
-                    if (Math.hypot(endX - touchStartX, endY - touchStartY) < TAP_MOVE_THRESHOLD) {
-                        handleCanvasTap(endX, endY);
-                    }
-                }
-            });
-
-            updatePlacementAvailability(false);
-        },
-        onUpdate: () => {
-            if (!scene) return;
-
-            const hitTestResults = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
-            const hit = pickBestHit(hitTestResults);
-
-            if (hit) {
-                missStreak = 0;
-
-                const p = hit.position;
-                const r = hit.rotation;
-                reticle.position.set(p.x, p.y, p.z);
-                reticle.quaternion.set(r.x, r.y, r.z, r.w);
-                planeIndicator.position.copy(reticle.position);
-                planeIndicator.quaternion.copy(reticle.quaternion);
-
-                // Snap global shadow height directly to the detected floor
-                if (groundPlane) groundPlane.position.y = p.y;
-
-                if (!surfaceLocked) {
-                    surfaceLocked = true;
-                    cssReticle.classList.add('locked');
-                    planeIndicator.visible = true;
-                    updatePlacementAvailability(true);
-                }
-            } else {
-                missStreak += 1;
-                if (missStreak > MISS_TOLERANCE_FRAMES && surfaceLocked) {
-                    surfaceLocked = false;
-                    cssReticle.classList.remove('locked');
-                    planeIndicator.visible = false;
-                    updatePlacementAvailability(false);
-                }
-            }
-        }
-    };
-};
-
-const onxrloaded = () => {
-    XR8.addCameraPipelineModules([
-        XR8.GlTextureRenderer.pipelineModule(),
-        XR8.Threejs.pipelineModule(),
-        XR8.XrController.pipelineModule(),
-        window.XRExtras.AlmostThere.pipelineModule(),
-        window.XRExtras.FullWindowCanvas.pipelineModule(),
-        window.XRExtras.Loading.pipelineModule(),
-        window.XRExtras.RuntimeError.pipelineModule(),
-        arStagingPipelineModule(),
-    ]);
-
-    XR8.run({ canvas: document.getElementById('camera-canvas') });
-};
-
-if (window.XR8) {
-    onxrloaded();
-} else {
-    window.addEventListener('xrloaded', onxrloaded);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 4. UI CONTROLS & DYNAMIC BUTTON HANDLERS
-// ─────────────────────────────────────────────────────────────────────────────
-
-function updateBudget() {
-    const total = spawnedModels.reduce((sum, item) => sum + (item.price || 0), 0);
-    document.getElementById('budget-value').textContent = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function updatePlacementAvailability(ready) {
-    placeBtn.disabled = !ready;
-    placeBtn.style.opacity = ready ? '1' : '0.4';
-    placeBtn.style.pointerEvents = ready ? 'auto' : 'none';
-
-    if (selectedModelData) {
-        hintEl.textContent = ready ? READY_HINT : SCANNING_HINT;
-    }
-}
-
-const catalogDrawer = document.getElementById('catalog-drawer');
-const hamburgerBtn = document.getElementById('hamburger-btn');
-const closeDrawerBtn = document.getElementById('close-drawer-btn');
-
-function toggleDrawer(open) {
-    if (open === undefined) {
-        catalogDrawer.classList.toggle('collapsed');
-    } else if (open) {
-        catalogDrawer.classList.remove('collapsed');
-    } else {
-        catalogDrawer.classList.add('collapsed');
-    }
-}
-
-hamburgerBtn.addEventListener('click', () => toggleDrawer());
-closeDrawerBtn.addEventListener('click', () => toggleDrawer(false));
-
-document.getElementById('clear-btn').addEventListener('click', () => {
-    selectPlacedModel(null);
-    spawnedModels.forEach(entry => {
-        scene.remove(entry.mesh);
-        disposeHierarchy(entry.mesh);
-    });
-    spawnedModels.length = 0;
-    updateBudget();
-});
-
-document.getElementById('delete-selected-btn').addEventListener('click', () => {
-    if (!selectedPlacedEntry) return;
-
-    const entryToDelete = selectedPlacedEntry;
-    selectPlacedModel(null);
-
-    scene.remove(entryToDelete.mesh);
-    disposeHierarchy(entryToDelete.mesh);
-
-    const idx = spawnedModels.indexOf(entryToDelete);
-    if (idx !== -1) {
-        spawnedModels.splice(idx, 1);
-    }
-    updateBudget();
-});
-
-placeBtn.addEventListener('click', () => {
-    if (selectedModelData && surfaceLocked) {
-        spawnModelAtReticle(selectedModelData);
-    }
-});
-
-function deepCloneModel(source) {
-    const clone = source.clone(true);
-    clone.traverse((node) => {
-        if (node.isMesh) {
-            if (node.geometry) node.geometry = node.geometry.clone();
-            if (Array.isArray(node.material)) {
-                node.material = node.material.map(m => m.clone());
-            } else if (node.material) {
-                node.material = node.material.clone();
-            }
-        }
-    });
-    return clone;
-}
-
-function disposeHierarchy(root) {
-    root.traverse((node) => {
-        if (node.isMesh) {
-            node.geometry?.dispose();
-            const mats = Array.isArray(node.material) ? node.material : [node.material];
-            mats.forEach(m => m?.dispose());
-        }
-    });
-}
-
-function spawnModelAtReticle(modelData) {
-    const glbUrl = modelData.glbUrl;
-
-    cssReticle.classList.add('flash');
-    setTimeout(() => cssReticle.classList.remove('flash'), 200);
-
-    const placementPosition = reticle.position.clone();
-
-    const templatePromise = modelCache[glbUrl] || preloadModel(glbUrl, { priority: true });
-
-    templatePromise
-        .then((template) => {
-            const modelRoot = deepCloneModel(template);
-            addMeshToScene(modelRoot, modelData, placementPosition);
-        })
-        .catch((err) => console.error('[spawnModel] Load error:', err));
-}
-
-function addMeshToScene(mesh, modelData, placementPosition) {
-    const wrapper = new THREE.Group();
-
-    // An inner wrapper absorbs the model's footprint offset without breaking local scale
-    const innerWrapper = new THREE.Group();
-    wrapper.add(innerWrapper);
-    innerWrapper.add(mesh);
-
-    // Temporarily center to compute clean footprint bounds
-    wrapper.position.set(0, 0, 0);
-    wrapper.rotation.set(0, 0, 0);
-    wrapper.scale.set(1, 1, 1);
-
-    innerWrapper.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(innerWrapper);
-
-    if (!box.isEmpty()) {
-        const center = new THREE.Vector3();
-        box.getCenter(center);
-
-        // Shift innerWrapper so the model's bottom-center sits flawlessly at (0,0,0) locally
-        innerWrapper.position.x = -center.x;
-        innerWrapper.position.z = -center.z;
-        innerWrapper.position.y = -box.min.y;
-    }
-
-    // Apply the spatial placement position
-    wrapper.position.copy(placementPosition);
-
-    // Orient the wrapper to immediately face the camera
-    const cameraDirection = new THREE.Vector3();
-    camera.getWorldDirection(cameraDirection);
-    wrapper.rotation.y = Math.atan2(-cameraDirection.x, -cameraDirection.z);
-
-    mesh.traverse((node) => {
-        if (node.isMesh) {
-            node.castShadow = true;
-            node.receiveShadow = true;
-        }
-    });
-
-    // Create an oriented Selection Box explicitly attached to the wrapper
-    const finalBox = new THREE.Box3().setFromObject(innerWrapper);
-    const size = new THREE.Vector3();
-    finalBox.getSize(size);
-
-    const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
-    const edges = new THREE.EdgesGeometry(boxGeo);
-    const selectionBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({
-        color: 0x34c759, // Standardized active-green for 47 XLVII
-        depthTest: false,
-        transparent: true
-    }));
-
-    selectionBox.position.set(0, size.y / 2, 0);
-    selectionBox.name = 'selectionBox';
-    selectionBox.visible = false;
-    wrapper.add(selectionBox);
-
-    scene.add(wrapper);
-
-    const entry = { mesh: wrapper, price: modelData.price, glbUrl: modelData.glbUrl };
-    spawnedModels.push(entry);
-
-    if (spawnedModels.length === 1) {
-        hintEl.classList.remove('show-hint');
-        hintEl.style.display = 'none';
-    }
-
-    selectPlacedModel(entry);
-    updateBudget();
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 5. FIREBASE CATALOG INTEGRATION
-// ─────────────────────────────────────────────────────────────────────────────
-
-const firebaseConfig = {
-    apiKey: 'AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY',
-    authDomain: 'shot47-database.firebaseapp.com',
-    projectId: 'shot47-database',
-    storageBucket: 'shot47-database.firebasestorage.app',
-    messagingSenderId: '77237094269',
-    appId: '1:77237094269:web:a90a6c6239cb66e3102e14',
-};
-
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp);
-const storage = getStorage(firebaseApp);
-
-const registry = { furniture: [], carpets: [], decor: [] };
-let activeCategory = 'furniture';
-
-const collectionMap = {
-    furniture: 'furniture_models',
-    carpets: 'carpet_models',
-    decor: 'decor_models',
-};
-
-async function resolveUrl(pathOrUrl, folder) {
-    if (!pathOrUrl) return null;
-    if (pathOrUrl.startsWith('http')) return pathOrUrl;
-    return getDownloadURL(ref(storage, `${folder}/${pathOrUrl}`));
-}
-
-function selectCatalogModel(card, assetData) {
-    document.querySelectorAll('.catalog-item').forEach(el => el.classList.remove('selected'));
-    card.classList.add('selected');
-    selectedModelData = assetData;
-
-    placeBtn.style.display = 'inline-flex';
-    hintEl.classList.add('show-hint');
-    updatePlacementAvailability(surfaceLocked);
-}
-
-function renderCatalog(category) {
-    const list = document.getElementById('catalog-list');
-    list.innerHTML = '';
-    const assets = registry[category] ?? [];
-
-    if (assets.length === 0) {
-        list.innerHTML = '<div class="empty-notice">Updating digital catalog…</div>';
-        return;
-    }
-
-    assets.forEach((asset) => {
-        const card = document.createElement('div');
-        card.className = 'catalog-item state-loading';
-        card.innerHTML = `
-            <div class="thumb-wrapper"><img class="catalog-thumb" alt="${asset.title}" /></div>
-            <div class="card-meta"><span>${asset.title}</span></div>
-        `;
-        list.appendChild(card);
-
-        const img = card.querySelector('.catalog-thumb');
-        if (asset.imgName) {
-            resolveUrl(asset.imgName, 'models/thumbnails')
-                .then((url) => { img.src = url; })
-                .catch(() => { });
-        }
-
-        resolveUrl(asset.glbName, 'models/glb')
-            .then((glbUrl) => {
+            firebaseService.resolveUrl(asset.glbName, 'models/glb').then(glbUrl => {
                 card.classList.remove('state-loading');
                 const assetData = { glbUrl, price: asset.price };
-                const isFirstCard = list.children[0] === card;
-
-                preloadModel(glbUrl, { priority: isFirstCard });
 
                 card.addEventListener('click', () => {
-                    selectCatalogModel(card, assetData);
-                    preloadModel(glbUrl, { priority: true });
+                    document.querySelectorAll('.catalog-item').forEach(el => el.classList.remove('selected'));
+                    card.classList.add('selected');
+                    this.selectedModelData = assetData;
+                    this.elements.placeBtn.style.display = 'inline-flex';
+                    this.elements.hint.classList.add('show-hint');
+                    this.updatePlacementAvailability(this.appContext.arScene.surfaceLocked);
+                    this.appContext.assetLoader.preloadModel(glbUrl);
                 });
 
-                if (!selectedModelData && isFirstCard) {
-                    selectCatalogModel(card, assetData);
+                if (index === 0 && !this.selectedModelData) {
+                    card.click();
                 }
-            })
-            .catch(() => {
-                card.classList.remove('state-loading');
-                card.style.opacity = '0.3';
             });
-    });
-}
-
-function initCatalogSync() {
-    Object.entries(collectionMap).forEach(([category, collectionName]) => {
-        onSnapshot(collection(db, collectionName), (snapshot) => {
-            registry[category] = [];
-            snapshot.forEach((doc) => {
-                const d = doc.data();
-                if (!d.glb) return;
-                registry[category].push({
-                    title: d.title ?? 'Unnamed',
-                    glbName: d.glb,
-                    imgName: d.img ?? null,
-                    price: d.price ?? 349.00
-                });
-            });
-            if (category === activeCategory) renderCatalog(activeCategory);
         });
-    });
+    }
 }
 
-document.querySelectorAll('.tab-btn').forEach((tab) => {
-    tab.addEventListener('click', (e) => {
-        document.querySelectorAll('.tab-btn').forEach((t) => t.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-        activeCategory = e.currentTarget.dataset.category;
-        renderCatalog(activeCategory);
-    });
-});
+class InputController {
+    constructor(arScene) {
+        this.arScene = arScene;
+        this.raycaster = new THREE.Raycaster();
+        this.pointer = new THREE.Vector2();
 
-initCatalogSync();
+        this.isDragging = false;
+        this.isRotating = false;
+        this.touchStartX = 0;
+        this.touchStartY = 0;
+        this.rotateStartAngle = 0;
+        this.rotateStartY = 0;
+        this.TAP_THRESHOLD = 10;
+    }
+
+    bindCanvas(canvas) {
+        canvas.addEventListener('touchstart', this.onTouchStart.bind(this), { passive: true });
+        canvas.addEventListener('touchmove', this.onTouchMove.bind(this), { passive: true });
+        canvas.addEventListener('touchend', this.onTouchEnd.bind(this));
+    }
+
+    onTouchStart(e) {
+        if (e.touches.length === 1) {
+            this.touchStartX = e.touches[0].clientX;
+            this.touchStartY = e.touches[0].clientY;
+            this.isDragging = false;
+            this.isRotating = false;
+        } else if (e.touches.length === 2 && this.arScene.selectedModel) {
+            this.isRotating = true;
+            this.isDragging = false;
+            this.rotateStartAngle = this.getAngle(e.touches);
+            this.rotateStartY = this.arScene.selectedModel.mesh.rotation.y;
+        }
+    }
+
+    onTouchMove(e) {
+        if (this.isRotating && e.touches.length === 2 && this.arScene.selectedModel) {
+            const currentAngle = this.getAngle(e.touches);
+            this.arScene.selectedModel.mesh.rotation.y = this.rotateStartY + (currentAngle - this.rotateStartAngle);
+            return;
+        }
+
+        if (e.touches.length === 1 && this.arScene.selectedModel) {
+            const touch = e.touches[0];
+            if (!this.isDragging) {
+                const dist = Math.hypot(touch.clientX - this.touchStartX, touch.clientY - this.touchStartY);
+                if (dist > this.TAP_THRESHOLD) this.isDragging = true;
+            }
+            if (this.isDragging) {
+                this.arScene.moveSelectedToScreenCoords(touch.clientX, touch.clientY);
+            }
+        }
+    }
+
+    onTouchEnd(e) {
+        if (this.isRotating || this.isDragging) {
+            this.isRotating = false;
+            this.isDragging = false;
+            return;
+        }
+        if (e.changedTouches.length === 1) {
+            const endX = e.changedTouches[0].clientX;
+            const endY = e.changedTouches[0].clientY;
+            if (Math.hypot(endX - this.touchStartX, endY - this.touchStartY) < this.TAP_THRESHOLD) {
+                this.handleTap(endX, endY);
+            }
+        }
+    }
+
+    getAngle(touches) {
+        return Math.atan2(touches[1].clientY - touches[0].clientY, touches[1].clientX - touches[0].clientX);
+    }
+
+    handleTap(x, y) {
+        if (!this.arScene.camera || !this.arScene.scene) return;
+
+        this.pointer.x = (x / window.innerWidth) * 2 - 1;
+        this.pointer.y = -(y / window.innerHeight) * 2 + 1;
+        this.raycaster.setFromCamera(this.pointer, this.arScene.camera);
+
+        const meshes = this.arScene.spawnedModels.map(m => m.mesh);
+        const intersects = this.raycaster.intersectObjects(meshes, true);
+
+        if (intersects.length > 0) {
+            let topObj = intersects[0].object;
+            while (topObj.parent && topObj.parent !== this.arScene.scene) {
+                topObj = topObj.parent;
+            }
+            const matched = this.arScene.spawnedModels.find(e => e.mesh === topObj);
+            this.arScene.selectModel(matched || null);
+        } else {
+            this.arScene.selectModel(null);
+        }
+    }
+}
+
+class ARScene {
+    constructor(appContext) {
+        this.appContext = appContext;
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+
+        this.reticle = null;
+        this.planeIndicator = null;
+        this.groundPlane = null;
+
+        this.spawnedModels = [];
+        this.selectedModel = null;
+        this.surfaceLocked = false;
+
+        this.inputController = new InputController(this);
+    }
+
+    createPipelineModule() {
+        return {
+            name: 'staging-app',
+            onStart: ({ canvas }) => {
+                const { scene, camera, renderer } = XR8.Threejs.xrScene();
+                this.scene = scene;
+                this.camera = camera;
+                this.renderer = renderer;
+
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+                this.setupLighting();
+                this.setupIndicators();
+                this.inputController.bindCanvas(canvas);
+
+                this.appContext.uiManager.updatePlacementAvailability(false);
+            },
+            onUpdate: () => this.updateSLAM()
+        };
+    }
+
+    setupLighting() {
+        const ambient = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.5);
+        ambient.position.set(0.5, 1, 0.25);
+        this.scene.add(ambient);
+
+        const directional = new THREE.DirectionalLight(0xffffff, 1.2);
+        directional.position.set(1, 4, 2);
+        directional.castShadow = true;
+        directional.shadow.mapSize.set(1024, 1024);
+        directional.shadow.bias = -0.001;
+        this.scene.add(directional);
+    }
+
+    setupIndicators() {
+        this.reticle = new THREE.Object3D();
+        this.scene.add(this.reticle);
+
+        const geo = new THREE.BoxGeometry(0.5, 0.01, 0.5);
+        const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.16, depthWrite: false });
+        this.planeIndicator = new THREE.Mesh(geo, mat);
+        this.planeIndicator.visible = false;
+        this.scene.add(this.planeIndicator);
+
+        this.groundPlane = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.ShadowMaterial({ opacity: 0.35 }));
+        this.groundPlane.rotation.x = -Math.PI / 2;
+        this.groundPlane.receiveShadow = true;
+        this.scene.add(this.groundPlane);
+    }
+
+    updateSLAM() {
+        if (!this.scene) return;
+        const results = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE']);
+        const hit = results.length > 0 ? results[0] : null;
+
+        if (hit) {
+            this.reticle.position.copy(hit.position);
+            this.reticle.quaternion.copy(hit.rotation);
+            this.planeIndicator.position.copy(hit.position);
+            this.planeIndicator.quaternion.copy(hit.rotation);
+            this.groundPlane.position.y = hit.position.y; // Sync shadow floor
+
+            if (!this.surfaceLocked) {
+                this.surfaceLocked = true;
+                this.planeIndicator.visible = true;
+                this.appContext.uiManager.elements.reticle.classList.add('locked');
+                this.appContext.uiManager.updatePlacementAvailability(true);
+            }
+        } else if (this.surfaceLocked) {
+            this.surfaceLocked = false;
+            this.planeIndicator.visible = false;
+            this.appContext.uiManager.elements.reticle.classList.remove('locked');
+            this.appContext.uiManager.updatePlacementAvailability(false);
+        }
+    }
+
+    moveSelectedToScreenCoords(x, y) {
+        if (!this.selectedModel || !window.XR8) return;
+        const nx = x / window.innerWidth;
+        const ny = y / window.innerHeight;
+        const results = XR8.XrController.hitTest(nx, ny, ['ESTIMATED_SURFACE_PLANE']);
+        if (results.length > 0) {
+            this.selectedModel.mesh.position.copy(results[0].position);
+        }
+    }
+
+    async spawnModel(modelData) {
+        this.appContext.uiManager.flashReticle();
+        const template = await this.appContext.assetLoader.preloadModel(modelData.glbUrl);
+        if (!template) return;
+
+        const mesh = this.appContext.assetLoader.deepClone(template);
+        const wrapper = new THREE.Group();
+        const innerWrapper = new THREE.Group();
+
+        wrapper.add(innerWrapper);
+        innerWrapper.add(mesh);
+
+        innerWrapper.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(innerWrapper);
+
+        if (!box.isEmpty()) {
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+            innerWrapper.position.set(-center.x, -box.min.y, -center.z); // Perfect local zeroing
+        }
+
+        wrapper.position.copy(this.reticle.position);
+
+        const camDir = new THREE.Vector3();
+        this.camera.getWorldDirection(camDir);
+        wrapper.rotation.y = Math.atan2(-camDir.x, -camDir.z); // Face camera
+
+        mesh.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; } });
+
+        const finalBox = new THREE.Box3().setFromObject(innerWrapper);
+        const size = new THREE.Vector3();
+        finalBox.getSize(size);
+
+        const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(size.x, size.y, size.z));
+        const selectionBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x34c759, depthTest: false }));
+        selectionBox.position.set(0, size.y / 2, 0);
+        selectionBox.name = 'selectionBox';
+        selectionBox.visible = false;
+        wrapper.add(selectionBox);
+
+        this.scene.add(wrapper);
+        const entry = { mesh: wrapper, price: modelData.price, glbUrl: modelData.glbUrl };
+        this.spawnedModels.push(entry);
+
+        if (this.spawnedModels.length === 1) {
+            this.appContext.uiManager.elements.hint.style.display = 'none';
+        }
+
+        this.selectModel(entry);
+        this.appContext.uiManager.updateBudget(this.spawnedModels);
+    }
+
+    selectModel(entry) {
+        this.spawnedModels.forEach(e => {
+            const box = e.mesh.getObjectByName('selectionBox');
+            if (box) box.visible = false;
+        });
+
+        this.selectedModel = entry;
+        this.appContext.uiManager.toggleDeleteButton(!!entry);
+
+        if (entry) {
+            const box = entry.mesh.getObjectByName('selectionBox');
+            if (box) box.visible = true;
+        }
+    }
+
+    disposeHierarchy(root) {
+        root.traverse(node => {
+            if (node.isMesh) {
+                node.geometry?.dispose();
+                const mats = Array.isArray(node.material) ? node.material : [node.material];
+                mats.forEach(m => m?.dispose());
+            }
+        });
+    }
+
+    deleteSelectedModel() {
+        if (!this.selectedModel) return;
+        this.scene.remove(this.selectedModel.mesh);
+        this.disposeHierarchy(this.selectedModel.mesh);
+        this.spawnedModels = this.spawnedModels.filter(m => m !== this.selectedModel);
+        this.selectModel(null);
+        this.appContext.uiManager.updateBudget(this.spawnedModels);
+    }
+
+    clearAllModels() {
+        this.selectModel(null);
+        this.spawnedModels.forEach(m => {
+            this.scene.remove(m.mesh);
+            this.disposeHierarchy(m.mesh);
+        });
+        this.spawnedModels = [];
+        this.appContext.uiManager.updateBudget(this.spawnedModels);
+    }
+}
+
+class ARApp {
+    constructor() {
+        this.assetLoader = new AssetLoader();
+        this.uiManager = new UIManager(this);
+        this.firebase = new FirebaseService(this.uiManager, this.assetLoader);
+        this.arScene = new ARScene(this);
+    }
+
+    start() {
+        this.firebase.initCatalogSync(this.uiManager.activeCategory);
+
+        const onxrloaded = () => {
+            XR8.addCameraPipelineModules([
+                XR8.GlTextureRenderer.pipelineModule(),
+                XR8.Threejs.pipelineModule(),
+                XR8.XrController.pipelineModule(),
+                window.XRExtras.AlmostThere.pipelineModule(),
+                window.XRExtras.FullWindowCanvas.pipelineModule(),
+                window.XRExtras.Loading.pipelineModule(),
+                window.XRExtras.RuntimeError.pipelineModule(),
+                this.arScene.createPipelineModule()
+            ]);
+            XR8.run({ canvas: document.getElementById('camera-canvas') });
+        };
+
+        if (window.XR8) {
+            onxrloaded();
+        } else {
+            window.addEventListener('xrloaded', onxrloaded);
+        }
+    }
+}
+
+// Bootstrap
+const app = new ARApp();
+app.start();
