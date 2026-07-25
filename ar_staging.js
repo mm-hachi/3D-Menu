@@ -17,7 +17,6 @@ class FirebaseService {
         this.uiManager = uiManager;
         this.assetLoader = assetLoader;
 
-        // Retaining technical keys, but branding reflects 47/XLVII
         this.config = {
             apiKey: 'AIzaSyC_3E_BmitmKo9QSKShPMjQePGrz9LmrWY',
             authDomain: 'shot47-database.firebaseapp.com',
@@ -385,16 +384,25 @@ class ARScene {
     }
 
     updateSLAM() {
-        if (!this.scene) return;
-        const results = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE']);
+        if (!this.scene || !window.XR8) return;
+
+        // Correct 8th Wall Hit Test Types
+        const hitTypes = [
+            XR8.XrController.hitTestType().ESTIMATED_SURFACE,
+            XR8.XrController.hitTestType().FEATURE_POINT
+        ];
+
+        const results = XR8.XrController.hitTest(0.5, 0.5, hitTypes);
         const hit = results.length > 0 ? results[0] : null;
 
         if (hit) {
             this.reticle.position.copy(hit.position);
-            this.reticle.quaternion.copy(hit.rotation);
+            if (hit.rotation) {
+                this.reticle.quaternion.copy(hit.rotation);
+                this.planeIndicator.quaternion.copy(hit.rotation);
+            }
             this.planeIndicator.position.copy(hit.position);
-            this.planeIndicator.quaternion.copy(hit.rotation);
-            this.groundPlane.position.y = hit.position.y; // Sync shadow floor
+            this.groundPlane.position.y = hit.position.y; // Sync shadow plane height
 
             if (!this.surfaceLocked) {
                 this.surfaceLocked = true;
@@ -414,7 +422,13 @@ class ARScene {
         if (!this.selectedModel || !window.XR8) return;
         const nx = x / window.innerWidth;
         const ny = y / window.innerHeight;
-        const results = XR8.XrController.hitTest(nx, ny, ['ESTIMATED_SURFACE_PLANE']);
+
+        const hitTypes = [
+            XR8.XrController.hitTestType().ESTIMATED_SURFACE,
+            XR8.XrController.hitTestType().FEATURE_POINT
+        ];
+
+        const results = XR8.XrController.hitTest(nx, ny, hitTypes);
         if (results.length > 0) {
             this.selectedModel.mesh.position.copy(results[0].position);
         }
@@ -438,14 +452,14 @@ class ARScene {
         if (!box.isEmpty()) {
             const center = new THREE.Vector3();
             box.getCenter(center);
-            innerWrapper.position.set(-center.x, -box.min.y, -center.z); // Perfect local zeroing
+            innerWrapper.position.set(-center.x, -box.min.y, -center.z); // Perfect ground alignment
         }
 
         wrapper.position.copy(this.reticle.position);
 
         const camDir = new THREE.Vector3();
         this.camera.getWorldDirection(camDir);
-        wrapper.rotation.y = Math.atan2(-camDir.x, -camDir.z); // Face camera
+        wrapper.rotation.y = Math.atan2(-camDir.x, -camDir.z); // Face user camera
 
         mesh.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; } });
 
@@ -550,6 +564,6 @@ class ARApp {
     }
 }
 
-// Bootstrap
+// Bootstrap Application
 const app = new ARApp();
 app.start();
