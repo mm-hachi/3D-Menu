@@ -247,6 +247,7 @@ class InputController {
 
         this.isDragging = false;
         this.isRotating = false;
+        this.touchStartedOnModel = false; // drag is only ever allowed if the touch actually began on the selected model
         this.touchStartX = 0;
         this.touchStartY = 0;
         this.rotateStartAngle = 0;
@@ -260,12 +261,39 @@ class InputController {
         canvas.addEventListener('touchend', this.onTouchEnd.bind(this));
     }
 
+    // Raycasts a screen point against a given set of meshes and returns the
+    // matching top-level spawnedModels entry, or null.
+    raycastForModel(x, y, meshes) {
+        if (!this.arScene.camera || !this.arScene.scene || meshes.length === 0) return null;
+
+        this.pointer.x = (x / window.innerWidth) * 2 - 1;
+        this.pointer.y = -(y / window.innerHeight) * 2 + 1;
+        this.raycaster.setFromCamera(this.pointer, this.arScene.camera);
+
+        const intersects = this.raycaster.intersectObjects(meshes, true);
+        if (intersects.length === 0) return null;
+
+        let topObj = intersects[0].object;
+        while (topObj.parent && topObj.parent !== this.arScene.scene) {
+            topObj = topObj.parent;
+        }
+        return this.arScene.spawnedModels.find(e => e.mesh === topObj) || null;
+    }
+
     onTouchStart(e) {
         if (e.touches.length === 1) {
             this.touchStartX = e.touches[0].clientX;
             this.touchStartY = e.touches[0].clientY;
             this.isDragging = false;
             this.isRotating = false;
+
+            // Only allow a subsequent drag if this touch actually landed on
+            // the currently selected model — otherwise a tap on open space
+            // (which always has a little natural jitter) gets misread as
+            // "drag the selected model" instead of deselecting it.
+            this.touchStartedOnModel = this.arScene.selectedModel
+                ? this.raycastForModel(this.touchStartX, this.touchStartY, [this.arScene.selectedModel.mesh]) !== null
+                : false;
         } else if (e.touches.length === 2 && this.arScene.selectedModel) {
             this.isRotating = true;
             this.isDragging = false;
@@ -285,7 +313,7 @@ class InputController {
             return;
         }
 
-        if (e.touches.length === 1 && this.arScene.selectedModel) {
+        if (e.touches.length === 1 && this.arScene.selectedModel && this.touchStartedOnModel) {
             const touch = e.touches[0];
             if (!this.isDragging) {
                 const dist = Math.hypot(touch.clientX - this.touchStartX, touch.clientY - this.touchStartY);
@@ -317,25 +345,9 @@ class InputController {
     }
 
     handleTap(x, y) {
-        if (!this.arScene.camera || !this.arScene.scene) return;
-
-        this.pointer.x = (x / window.innerWidth) * 2 - 1;
-        this.pointer.y = -(y / window.innerHeight) * 2 + 1;
-        this.raycaster.setFromCamera(this.pointer, this.arScene.camera);
-
         const meshes = this.arScene.spawnedModels.map(m => m.mesh);
-        const intersects = this.raycaster.intersectObjects(meshes, true);
-
-        if (intersects.length > 0) {
-            let topObj = intersects[0].object;
-            while (topObj.parent && topObj.parent !== this.arScene.scene) {
-                topObj = topObj.parent;
-            }
-            const matched = this.arScene.spawnedModels.find(e => e.mesh === topObj);
-            this.arScene.selectModel(matched || null);
-        } else {
-            this.arScene.selectModel(null);
-        }
+        const matched = this.raycastForModel(x, y, meshes);
+        this.arScene.selectModel(matched);
     }
 }
 
@@ -467,10 +479,17 @@ class ARScene {
     // as a valid includedTypes value — there is no confirmed
     // 'ESTIMATED_SURFACE_PLANE' type in the real API. Filtering for it (as
     // this used to) silently discarded every result, forever, with no error.
+    //
+    // hitTest can return multiple candidates along the same ray (e.g. a
+    // floor point behind a nearer, noisier point). Preferring whichever
+    // candidate reads as horizontal — rather than just taking whatever
+    // comes back first — makes floor detection noticeably more reliable
+    // for furniture placement.
     pickBestHit() {
         try {
             const results = XR8.XrController.hitTest(0.5, 0.5, ['FEATURE_POINT']);
-            return results.length > 0 ? results[0] : null;
+            if (results.length === 0) return null;
+            return results.find((h) => this.classifyPlane(h.rotation) === 'horizontal') || results[0];
         } catch (err) {
             if (!this._hitTestErrorLogged) {
                 this._hitTestErrorLogged = true;
@@ -488,7 +507,7 @@ class ARScene {
         let hit = null;
         try {
             const results = XR8.XrController.hitTest(nx, ny, ['FEATURE_POINT']);
-            hit = results.length > 0 ? results[0] : null;
+            hit = results.length > 0 ? (results.find((h) => this.classifyPlane(h.rotation) === 'horizontal') || results[0]) : null;
         } catch (err) {
             console.error('[ARScene] hitTest() threw during drag:', err);
         }
@@ -614,6 +633,18 @@ class ARApp {
         this.firebase.initCatalogSync(this.uiManager.activeCategory);
 
         const onxrloaded = () => {
+            // Must be configured before XR8.XrController.pipelineModule() is
+            // added to the pipeline — 8th Wall's docs are explicit that this
+            // kind of setting can't be changed once the engine is running,
+            // and other configure() flags (e.g. disableWorldTracking) are
+            // documented as needing to be set before the pipeline module is
+            // even added, not just before XR8.run(). By default 8th Wall
+            // uses "Responsive Scale", which re-derives scale from camera
+            // height continuously as you move — that's what was causing
+            // models to grow/shrink/drift. Absolute Scale uses the device's
+            // actual measured camera height instead.
+            XR8.XrController.configure({ scale: 'absolute' });
+
             XR8.addCameraPipelineModules([
                 XR8.GlTextureRenderer.pipelineModule(),
                 XR8.Threejs.pipelineModule(),
@@ -624,16 +655,6 @@ class ARApp {
                 window.XRExtras.RuntimeError.pipelineModule(),
                 this.arScene.createPipelineModule()
             ]);
-
-            // By default 8th Wall uses "Responsive Scale", which does NOT
-            // use real-world measured distance — it heuristically derives
-            // scale from the camera's height and keeps re-estimating it as
-            // you move, which is exactly what causes placed models to drift
-            // larger/smaller over time with no real anchor to true size.
-            // Absolute Scale uses the device's actual measured camera
-            // height instead, so 1 unit reliably means 1 real-world meter.
-            // Must be set before XR8.run().
-            XR8.XrController.configure({ scale: 'absolute' });
 
             XR8.run({ canvas: document.getElementById('camera-canvas') });
         };
