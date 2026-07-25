@@ -387,13 +387,7 @@ class ARScene {
     updateSLAM() {
         if (!this.scene || !window.XR8) return;
 
-        const hitTypes = [
-            XR8.XrController.HitTestType.ESTIMATED_SURFACE,
-            XR8.XrController.HitTestType.FEATURE_POINT
-        ];
-
-        const results = XR8.XrController.hitTest(0.5, 0.5, hitTypes);
-        const hit = results.length > 0 ? results[0] : null;
+        const hit = this.pickBestHit();
 
         if (hit) {
             this.reticle.position.copy(hit.position);
@@ -405,7 +399,12 @@ class ARScene {
             }
 
             this.planeIndicator.position.copy(hit.position);
-            this.groundPlane.position.y = hit.position.y; // Sync shadow floor
+
+            // Only sync the floor shadow-catcher on a horizontal hit — a
+            // wall hit has no bearing on where the actual floor is.
+            if (this.classifyPlane(hit.rotation) === 'horizontal') {
+                this.groundPlane.position.y = hit.position.y;
+            }
 
             if (!this.surfaceLocked) {
                 this.surfaceLocked = true;
@@ -421,19 +420,50 @@ class ARScene {
         }
     }
 
+    // Distinguishes a floor/tabletop from a wall by checking how aligned the
+    // plane's normal is with world-up — the same distinction ARKit/Quick
+    // Look makes.
+    classifyPlane(rotation) {
+        if (!rotation) return 'horizontal';
+        const q = new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
+        const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+        const alignment = Math.abs(up.dot(new THREE.Vector3(0, 1, 0)));
+        if (alignment > 0.8) return 'horizontal';
+        if (alignment < 0.35) return 'vertical';
+        return 'angled';
+    }
+
+    // Only a real, classified ESTIMATED_SURFACE_PLANE counts as a detected
+    // surface. FEATURE_POINT is requested (so we can tell tracking is at
+    // least alive) but is never accepted for placement — it has no reliable
+    // orientation and is too noisy. Horizontal planes are preferred over
+    // vertical, matching Quick Look.
+    pickBestHit() {
+        const results = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
+        const planes = results.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE');
+        if (planes.length === 0) return null;
+
+        return (
+            planes.find((h) => this.classifyPlane(h.rotation) === 'horizontal') ||
+            planes.find((h) => this.classifyPlane(h.rotation) === 'vertical') ||
+            planes[0]
+        );
+    }
+
     moveSelectedToScreenCoords(x, y) {
         if (!this.selectedModel || !window.XR8) return;
         const nx = x / window.innerWidth;
         const ny = y / window.innerHeight;
 
-        const hitTypes = [
-            XR8.XrController.HitTestType.ESTIMATED_SURFACE,
-            XR8.XrController.HitTestType.FEATURE_POINT
-        ];
+        const results = XR8.XrController.hitTest(nx, ny, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
+        const planes = results.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE');
+        const hit =
+            planes.find((h) => this.classifyPlane(h.rotation) === 'horizontal') ||
+            planes.find((h) => this.classifyPlane(h.rotation) === 'vertical') ||
+            planes[0];
 
-        const results = XR8.XrController.hitTest(nx, ny, hitTypes);
-        if (results.length > 0) {
-            this.selectedModel.mesh.position.copy(results[0].position);
+        if (hit) {
+            this.selectedModel.mesh.position.copy(hit.position);
         }
     }
 
