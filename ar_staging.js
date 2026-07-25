@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+import { initializeFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js';
 
 window.THREE = THREE;
@@ -28,7 +28,12 @@ class FirebaseService {
         };
 
         this.app = initializeApp(this.config);
-        this.db = getFirestore(this.app);
+        // WebChannel (Firestore's default streaming transport) can fail on
+        // certain networks/proxies/mobile carriers with a "transport
+        // errored" RPC error. Auto-detecting long-polling is Firebase's own
+        // documented mitigation: it only falls back to long-polling if
+        // streaming genuinely doesn't work, rather than forcing it always.
+        this.db = initializeFirestore(this.app, { experimentalAutoDetectLongPolling: true });
         this.storage = getStorage(this.app);
 
         this.registry = { furniture: [], carpets: [], decor: [] };
@@ -47,23 +52,29 @@ class FirebaseService {
 
     initCatalogSync(activeCategory) {
         Object.entries(this.collectionMap).forEach(([category, collectionName]) => {
-            onSnapshot(collection(this.db, collectionName), (snapshot) => {
-                this.registry[category] = [];
-                snapshot.forEach((doc) => {
-                    const d = doc.data();
-                    if (d.glb) {
-                        this.registry[category].push({
-                            title: d.title ?? 'Unnamed',
-                            glbName: d.glb,
-                            imgName: d.img ?? null,
-                            price: d.price ?? 0.00
-                        });
+            onSnapshot(
+                collection(this.db, collectionName),
+                (snapshot) => {
+                    this.registry[category] = [];
+                    snapshot.forEach((doc) => {
+                        const d = doc.data();
+                        if (d.glb) {
+                            this.registry[category].push({
+                                title: d.title ?? 'Unnamed',
+                                glbName: d.glb,
+                                imgName: d.img ?? null,
+                                price: d.price ?? 0.00
+                            });
+                        }
+                    });
+                    if (category === activeCategory) {
+                        this.uiManager.renderCatalog(this.registry[category], this);
                     }
-                });
-                if (category === activeCategory) {
-                    this.uiManager.renderCatalog(this.registry[category], this);
+                },
+                (err) => {
+                    console.error(`[FirebaseService] Listener failed for "${collectionName}":`, err);
                 }
-            });
+            );
         });
     }
 }
@@ -194,27 +205,36 @@ class UIManager {
 
             const img = card.querySelector('.catalog-thumb');
             if (asset.imgName) {
-                firebaseService.resolveUrl(asset.imgName, 'models/thumbnails').then(url => img.src = url);
+                firebaseService.resolveUrl(asset.imgName, 'models/thumbnails')
+                    .then(url => img.src = url)
+                    .catch(err => console.error(`[UIManager] Thumbnail failed for "${asset.title}":`, err));
             }
 
-            firebaseService.resolveUrl(asset.glbName, 'models/glb').then(glbUrl => {
-                card.classList.remove('state-loading');
-                const assetData = { glbUrl, price: asset.price };
+            firebaseService.resolveUrl(asset.glbName, 'models/glb')
+                .then(glbUrl => {
+                    card.classList.remove('state-loading');
+                    const assetData = { glbUrl, price: asset.price };
 
-                card.addEventListener('click', () => {
-                    document.querySelectorAll('.catalog-item').forEach(el => el.classList.remove('selected'));
-                    card.classList.add('selected');
-                    this.selectedModelData = assetData;
-                    this.elements.placeBtn.style.display = 'inline-flex';
-                    this.elements.hint.classList.add('show-hint');
-                    this.updatePlacementAvailability(this.appContext.arScene.surfaceLocked);
-                    this.appContext.assetLoader.preloadModel(glbUrl);
+                    card.addEventListener('click', () => {
+                        document.querySelectorAll('.catalog-item').forEach(el => el.classList.remove('selected'));
+                        card.classList.add('selected');
+                        this.selectedModelData = assetData;
+                        this.elements.placeBtn.style.display = 'inline-flex';
+                        this.elements.hint.classList.add('show-hint');
+                        this.updatePlacementAvailability(this.appContext.arScene.surfaceLocked);
+                        this.appContext.assetLoader.preloadModel(glbUrl)
+                            .catch(err => console.error(`[UIManager] Preload failed for "${asset.title}":`, err));
+                    });
+
+                    if (index === 0 && !this.selectedModelData) {
+                        card.click();
+                    }
+                })
+                .catch(err => {
+                    card.classList.remove('state-loading');
+                    card.style.opacity = '0.3';
+                    console.error(`[UIManager] GLB URL resolution failed for "${asset.title}":`, err);
                 });
-
-                if (index === 0 && !this.selectedModelData) {
-                    card.click();
-                }
-            });
         });
     }
 }
@@ -337,6 +357,11 @@ class ARScene {
         return {
             name: 'staging-app',
             onStart: ({ canvas }) => {
+                console.log('[ARScene] onStart fired — XR8 pipeline is running.');
+                if (typeof XR8?.XrController?.hitTest !== 'function') {
+                    console.error('[ARScene] XR8.XrController.hitTest is not available — SLAM tracking did not initialize.');
+                }
+
                 const { scene, camera, renderer } = XR8.Threejs.xrScene();
                 this.scene = scene;
                 this.camera = camera;
@@ -421,8 +446,9 @@ class ARScene {
     }
 
     // Distinguishes a floor/tabletop from a wall by checking how aligned the
-    // plane's normal is with world-up — the same distinction ARKit/Quick
-    // Look makes.
+    // hit's rotation is with world-up. FEATURE_POINT hits still carry a real,
+    // locally-fitted rotation (not a fabricated one) — this just categorizes
+    // it after the fact, e.g. for deciding whether to sync the floor shadow.
     classifyPlane(rotation) {
         if (!rotation) return 'horizontal';
         const q = new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
@@ -433,21 +459,21 @@ class ARScene {
         return 'angled';
     }
 
-    // Only a real, classified ESTIMATED_SURFACE_PLANE counts as a detected
-    // surface. FEATURE_POINT is requested (so we can tell tracking is at
-    // least alive) but is never accepted for placement — it has no reliable
-    // orientation and is too noisy. Horizontal planes are preferred over
-    // vertical, matching Quick Look.
+    // 8th Wall's own hitTest() reference only ever documents 'FEATURE_POINT'
+    // as a valid includedTypes value — there is no confirmed
+    // 'ESTIMATED_SURFACE_PLANE' type in the real API. Filtering for it (as
+    // this used to) silently discarded every result, forever, with no error.
     pickBestHit() {
-        const results = XR8.XrController.hitTest(0.5, 0.5, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
-        const planes = results.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE');
-        if (planes.length === 0) return null;
-
-        return (
-            planes.find((h) => this.classifyPlane(h.rotation) === 'horizontal') ||
-            planes.find((h) => this.classifyPlane(h.rotation) === 'vertical') ||
-            planes[0]
-        );
+        try {
+            const results = XR8.XrController.hitTest(0.5, 0.5, ['FEATURE_POINT']);
+            return results.length > 0 ? results[0] : null;
+        } catch (err) {
+            if (!this._hitTestErrorLogged) {
+                this._hitTestErrorLogged = true;
+                console.error('[ARScene] XR8.XrController.hitTest() threw — SLAM tracking may not be initialized:', err);
+            }
+            return null;
+        }
     }
 
     moveSelectedToScreenCoords(x, y) {
@@ -455,12 +481,13 @@ class ARScene {
         const nx = x / window.innerWidth;
         const ny = y / window.innerHeight;
 
-        const results = XR8.XrController.hitTest(nx, ny, ['ESTIMATED_SURFACE_PLANE', 'FEATURE_POINT']);
-        const planes = results.filter((h) => h.type === 'ESTIMATED_SURFACE_PLANE');
-        const hit =
-            planes.find((h) => this.classifyPlane(h.rotation) === 'horizontal') ||
-            planes.find((h) => this.classifyPlane(h.rotation) === 'vertical') ||
-            planes[0];
+        let hit = null;
+        try {
+            const results = XR8.XrController.hitTest(nx, ny, ['FEATURE_POINT']);
+            hit = results.length > 0 ? results[0] : null;
+        } catch (err) {
+            console.error('[ARScene] hitTest() threw during drag:', err);
+        }
 
         if (hit) {
             this.selectedModel.mesh.position.copy(hit.position);
@@ -469,7 +496,14 @@ class ARScene {
 
     async spawnModel(modelData) {
         this.appContext.uiManager.flashReticle();
-        const template = await this.appContext.assetLoader.preloadModel(modelData.glbUrl);
+
+        let template;
+        try {
+            template = await this.appContext.assetLoader.preloadModel(modelData.glbUrl);
+        } catch (err) {
+            console.error('[ARScene] Failed to load model for placement:', err);
+            return;
+        }
         if (!template) return;
 
         const mesh = this.appContext.assetLoader.deepClone(template);
