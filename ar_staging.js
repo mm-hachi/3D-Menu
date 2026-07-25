@@ -277,7 +277,11 @@ class InputController {
     onTouchMove(e) {
         if (this.isRotating && e.touches.length === 2 && this.arScene.selectedModel) {
             const currentAngle = this.getAngle(e.touches);
-            this.arScene.selectedModel.mesh.rotation.y = this.rotateStartY + (currentAngle - this.rotateStartAngle);
+            // Screen-space angle is measured with Y increasing downward;
+            // world-space rotation.y increases the opposite sense, so the
+            // raw delta was rotating the model backwards relative to the
+            // twist gesture. Negating it corrects the direction.
+            this.arScene.selectedModel.mesh.rotation.y = this.rotateStartY - (currentAngle - this.rotateStartAngle);
             return;
         }
 
@@ -620,6 +624,17 @@ class ARApp {
                 window.XRExtras.RuntimeError.pipelineModule(),
                 this.arScene.createPipelineModule()
             ]);
+
+            // By default 8th Wall uses "Responsive Scale", which does NOT
+            // use real-world measured distance — it heuristically derives
+            // scale from the camera's height and keeps re-estimating it as
+            // you move, which is exactly what causes placed models to drift
+            // larger/smaller over time with no real anchor to true size.
+            // Absolute Scale uses the device's actual measured camera
+            // height instead, so 1 unit reliably means 1 real-world meter.
+            // Must be set before XR8.run().
+            XR8.XrController.configure({ scale: 'absolute' });
+
             XR8.run({ canvas: document.getElementById('camera-canvas') });
         };
 
