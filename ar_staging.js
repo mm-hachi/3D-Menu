@@ -383,6 +383,17 @@ class ARScene {
                 this.camera = camera;
                 this.renderer = renderer;
 
+                // Responsive Scale derives its scale reference from the
+                // camera's Y position at the moment tracking starts. This
+                // has never been set, so it's been defaulting to 0 — a
+                // degenerate reference height that's the likely cause of
+                // the wild scale swings. ~1.4m approximates a typical
+                // hand-held phone height when aiming at floor-level
+                // furniture; tune this single number if placed models
+                // consistently read as uniformly too large or too small.
+                const ASSUMED_CAMERA_HEIGHT_METERS = 1.4;
+                camera.position.set(0, ASSUMED_CAMERA_HEIGHT_METERS, 0);
+
                 this.renderer.shadowMap.enabled = true;
                 this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -643,7 +654,16 @@ class ARApp {
             // height continuously as you move — that's what was causing
             // models to grow/shrink/drift. Absolute Scale uses the device's
             // actual measured camera height instead.
-            XR8.XrController.configure({ scale: 'absolute' });
+            // Absolute Scale requires an additional "Coaching Overlay"
+            // pipeline module to calibrate camera height (the user waves
+            // their phone back and forth) — without it there's nothing to
+            // calibrate against. It's also independently reported by other
+            // 8th Wall developers as jittery/unstable even when set up
+            // correctly. Responsive Scale (8th Wall's documented default,
+            // and their own recommended "ideal experience" in most cases)
+            // is more stable — it just needs a sensible starting camera
+            // height, set below in onStart, instead of the default (0,0,0).
+            XR8.XrController.configure({ scale: 'responsive' });
 
             XR8.addCameraPipelineModules([
                 XR8.GlTextureRenderer.pipelineModule(),
