@@ -677,6 +677,26 @@
                 move('corner-tbr', xMax, yMax, zMin);
 
                 bubbles.forEach(b => b.style.display = 'flex');
+                // ─────────────────────────────────────────────────────────────────
+            // NEW: DYNAMIC PANNING LOGIC
+            // ─────────────────────────────────────────────────────────────────
+            
+            // 1. Capture the default auto-framing distance (100% zoom)
+            const defaultRadius = viewer.getCameraOrbit().radius;
+
+            // 2. Track the camera as the user interacts
+            viewer.addEventListener('camera-change', () => {
+                const currentRadius = viewer.getCameraOrbit().radius;
+
+                // If zoomed in closer than 95% of the default distance, enable panning
+                if (currentRadius < defaultRadius * 0.95) {
+                    viewer.removeAttribute('disable-pan');
+                } else {
+                    // If zoomed out to default, lock panning and recenter the model
+                    viewer.setAttribute('disable-pan', '');
+                    viewer.cameraTarget = 'auto auto auto'; 
+                }
+            });
             }, { once: true });
 
             try {
